@@ -1,0 +1,23 @@
+#pragma once
+
+// --- RP2350 VARIANT ---
+#define PICO_RP2350B 1
+
+// --- UART ---
+#ifndef PICO_DEFAULT_UART
+#define PICO_DEFAULT_UART 0
+#endif
+#ifndef PICO_DEFAULT_UART_TX_PIN
+#define PICO_DEFAULT_UART_TX_PIN 0
+#endif
+#ifndef PICO_DEFAULT_UART_RX_PIN
+#define PICO_DEFAULT_UART_RX_PIN 1
+#endif
+#ifndef PICO_DEFAULT_UART_BAUD_RATE
+#define PICO_DEFAULT_UART_BAUD_RATE 1500000
+#endif
+
+// pico_cmake_set_default PICO_RP2350_A2_SUPPORTED = 1
+#ifndef PICO_RP2350_A2_SUPPORTED
+#define PICO_RP2350_A2_SUPPORTED 1
+#endif
