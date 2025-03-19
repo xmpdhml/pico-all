@@ -24,7 +24,7 @@ include_directories(include)
 
 #pico_generate_pio_header(pico_all ${CMAKE_CURRENT_LIST_DIR}/ws2812b.pio OUTPUT_DIR ${CMAKE_CURRENT_LIST_DIR}/generated)
 
-target_link_libraries(${PROJECT_NAME} PRIVATE pico_stdlib hardware_pio)
+target_link_libraries(${PROJECT_NAME} PRIVATE pico_stdlib hardware_pio hardware_uart hardware_dma hardware_irq)
 
 pico_enable_stdio_usb(${PROJECT_NAME} 0)
 pico_enable_stdio_uart(${PROJECT_NAME} 1)
