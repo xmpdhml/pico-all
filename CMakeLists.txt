@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.13)
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON CACHE INTERNAL "")
+
 set(PICO_PLATFORM "rp2350-arm-s")
 set(PICO_BOARD "super_rp2350b")
 set(PICO_COPY_TO_RAM 1)
@@ -24,7 +26,7 @@ include_directories(include)
 
 #pico_generate_pio_header(pico_all ${CMAKE_CURRENT_LIST_DIR}/ws2812b.pio OUTPUT_DIR ${CMAKE_CURRENT_LIST_DIR}/generated)
 
-target_link_libraries(${PROJECT_NAME} PRIVATE pico_stdlib hardware_pio hardware_uart hardware_dma hardware_irq)
+target_link_libraries(${PROJECT_NAME} PRIVATE pico_stdlib hardware_pio hardware_uart hardware_dma hardware_irq pico_multicore)
 
 pico_enable_stdio_usb(${PROJECT_NAME} 0)
 pico_enable_stdio_uart(${PROJECT_NAME} 1)

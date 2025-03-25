@@ -1,0 +1,57 @@
+{
+    "configurations": [
+        {
+            "name": "Win32",
+            "includePath": [
+                "${workspaceFolder}/**"
+            ],
+            "defines": [
+                "_DEBUG",
+                "UNICODE",
+                "_UNICODE"
+            ],
+            "windowsSdkVersion": "10.0.26100.0",
+            "compilerPath": "/usr/bin/arm-none-eabi-g++",
+            "cStandard": "c17",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "windows-msvc-x64"
+        },
+        {
+            "name": "pico",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "/home/yan/Work/kbd_pi/pico-sdk/**",
+                "/home/yan/Work/kbd_pi/pico-sdk/src/rp2_common/hardware_gpio/include",
+                "/home/yan/Work/kbd_pi/pico-sdk/src/rp2_common/hardware_base/include",
+                "/home/yan/Work/kbd_pi/pico-sdk/src/rp2040/hardware_regs/include",
+                "/home/yan/Work/kbd_pi/pico-sdk/src/rp2040/hardware_structs/include",
+                "/home/yan/Work/kbd_pi/pico-sdk/src/rp2_common/hardware_irq/include",
+                "/home/yan/Work/kbd_pi/pico-sdk/src/rp2_common/hardware_uart/include",
+                "/home/yan/Work/kbd_pi/pico-sdk/src/rp2_common/hardware_dma/include",
+                "/home/yan/Work/kbd_pi/pico-sdk/src/rp2_common/pico_stdio_uart/include",
+                "${workspaceFolder}/include"
+            ],
+            "defines": [
+                "_DEBUG",
+                "UNICODE",
+                "_UNICODE",
+                "LIB_PICO_PLATFORM",
+                "LIB_PICO_STDLIB"
+            ],
+            "windowsSdkVersion": "10.0.26100.0",
+            "compilerPath": "/usr/bin/arm-none-eabi-g++",
+            "cStandard": "c23",
+            "cppStandard": "c++23",
+            "intelliSenseMode": "linux-gcc-arm",
+            "mergeConfigurations": false,
+            "browse": {
+                "path": [
+                    "/home/yan/Work/kbd_pi/rp_1/pico-all/**",
+                    "${workspaceFolder}"
+                ],
+                "limitSymbolsToIncludedHeaders": true
+            }
+        }
+    ],
+    "version": 4
+}

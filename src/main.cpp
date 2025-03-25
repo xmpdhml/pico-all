@@ -3,11 +3,14 @@
 #include <iostream>
 
 #include "pico/stdlib.h"
-// Replace pico/stdio.h with the following to get the complete struct definition
 #include "pico/stdio/driver.h"
 #include "hardware/uart.h"
 #include "hardware/dma.h"
 #include "hardware/irq.h"
+#include "pico/multicore.h"
+#include <atomic>
+
+#include "uart_stdio.h"
 
 // Define UART constants
 #ifdef PICO_DEFAULT_UART
@@ -37,17 +40,35 @@
 #   define BAUD_RATE 1500000
 #endif
 
+#define LED_PIN 14
+
 // DMA channel for UART TX
 int dma_tx_channel;
 // Buffer for DMA transfers
 char dma_tx_buffer[256];
+//volatile std::atomic_bool dma_transfer_complete = true;
 volatile bool dma_transfer_complete = true;
 
-// Handler for DMA transfer completion
+// DMA handler for core1
 void dma_handler() {
     // Clear the interrupt request
     dma_hw->ints0 = 1u << dma_tx_channel;
     dma_transfer_complete = true;
+}
+
+// Function to configure DMA interrupt on core1
+void core1_setup() {
+    // Set up the DMA interrupt handler on core1
+    irq_set_exclusive_handler(DMA_IRQ_0, dma_handler);
+    irq_set_enabled(DMA_IRQ_0, true);
+
+    // Enable DMA channel interrupt
+    dma_channel_set_irq0_enabled(dma_tx_channel, true);
+
+    // Core1 main loop (optional)
+    while (true) {
+        tight_loop_contents();
+    }
 }
 
 // Custom write function for stdio
@@ -110,21 +131,35 @@ int main() {
         false            // Don't start yet
     );
     
-    // Set up interrupt handler for DMA completion
-    dma_channel_set_irq0_enabled(dma_tx_channel, true);
-    irq_set_exclusive_handler(DMA_IRQ_0, dma_handler);
-    irq_set_enabled(DMA_IRQ_0, true);
-    
+    // Launch core1 setup
+    multicore_launch_core1(core1_setup);
+
     // Register our custom stdio driver
     stdio_set_driver_enabled(&uart_dma_stdio, true);
     
     printf("Hello, world! customized\n");
 
+    // Set up LED pin
+    gpio_init(LED_PIN);
+    gpio_set_dir(LED_PIN, GPIO_OUT);
+
+    // Main loop on core0
+    bool led_state = false;
     while (1) {
         sleep_ms(1000);
-        printf(".");
+        printf("Core0 is running...\n");
         std::cout << "-" << std::flush;
+        gpio_put(LED_PIN, led_state);
+        led_state = !led_state;
     }
+
+    // auto* uart_stdio = Service::create<UartStdioService>(
+    //     UartStdioServiceCreationContext{
+    //     .uart = UART_ID,
+    //     .baudrate = BAUD_RATE,
+    //     .tx_pin = UART_TX_PIN,
+    //     .rx_pin = UART_RX_PIN
+    // });
     
     return 0;
 }
