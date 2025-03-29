@@ -10,8 +10,6 @@
 #include "pico/multicore.h"
 #include <atomic>
 
-#include "uart_stdio.h"
-
 // Define UART constants
 #ifdef PICO_DEFAULT_UART
 #   if PICO_DEFAULT_UART == 0
