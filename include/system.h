@@ -1,5 +1,7 @@
 #pragma once
 
+#include "pinlist.h"
+
 #include "uart_dma_stdio.h"
 #include "key_scan.h"
 

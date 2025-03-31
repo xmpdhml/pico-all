@@ -1,7 +1,12 @@
 {
     "files.associations": {
         "*.tcc": "cpp",
-        "atomic": "cpp"
+        "atomic": "cpp",
+        "io_bank0.h": "c",
+        "gpio.h": "c",
+        "array": "cpp",
+        "string_view": "cpp",
+        "initializer_list": "cpp"
     },
     "C_Cpp.default.compilerPath": "/usr/bin/arm-none-eabi-g++",
     "C_Cpp.default.compileCommands": "${workspaceFolder}/compile_commands.json",
