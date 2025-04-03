@@ -1,22 +1,22 @@
 #include "lockfree.h"
 
-LockFreeQueueBase::LockFreeQueueBase(uint data_size)
+LockFreeQueueBase::LockFreeQueueBase(size_t data_size)
     : data_size(data_size),
       used(data_size),
       head(0),
       tail(1)
 {
-    for (uint i = 0; i < data_size; ++i)
+    for (size_t i = 0; i < data_size; ++i)
     {
         used[i].store(false, std::memory_order_release);
     }
 }
 
-bool LockFreeQueueBase::acquire_read(uint &p)
+bool LockFreeQueueBase::acquire_read(size_t &p)
 {
     while (true)
     {
-        uint h, nh;
+        size_t h, nh;
         h = head.load(std::memory_order_acquire);
         nh = (h + 1) % data_size;
         if (nh == tail.load(std::memory_order_acquire)) return false;
@@ -31,16 +31,16 @@ bool LockFreeQueueBase::acquire_read(uint &p)
     }
 }
 
-void LockFreeQueueBase::done_read(uint p)
+void LockFreeQueueBase::done_read(size_t p)
 {
     used[p].store(false, std::memory_order_release);
 }
 
-bool LockFreeQueueBase::acquire_write(uint &p)
+bool LockFreeQueueBase::acquire_write(size_t &p)
 {
     while (true)
     {
-        uint t, nt;
+        size_t t, nt;
         t = tail.load(std::memory_order_acquire);
         if (t == head.load(std::memory_order_acquire)) return false;
         nt = (t + 1) % data_size;
