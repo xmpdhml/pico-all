@@ -6,7 +6,9 @@
         "gpio.h": "c",
         "array": "cpp",
         "string_view": "cpp",
-        "initializer_list": "cpp"
+        "initializer_list": "cpp",
+        "cstddef": "cpp",
+        "stddef.h": "c"
     },
     "C_Cpp.default.compilerPath": "/usr/bin/arm-none-eabi-g++",
     "C_Cpp.default.compileCommands": "${workspaceFolder}/compile_commands.json",
