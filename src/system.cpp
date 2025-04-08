@@ -6,11 +6,10 @@ System& internal_create()
     return instance;
 }
 
-System& system = internal_create();
+System& sys = internal_create();
 
 System::System()
-    : io(*new UartDMAStdio()),
-      keys(*new KeyScan())
+    : io(io_instance), keys(keys_instance)
 {
     // Constructor implementation
 }

@@ -22,6 +22,9 @@ private:
     System& operator=(const System&) = delete;
     System(System&&) = delete;
     System& operator=(System&&) = delete;
+
+    UartDMAStdio io_instance;
+    KeyScan keys_instance;
 };
 
-extern System& system;
+extern System& sys;

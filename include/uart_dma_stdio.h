@@ -19,6 +19,4 @@ private:
     UartDMAStdio(UartDMAStdio&&) = delete;
     UartDMAStdio& operator=(UartDMAStdio&&) = delete;
 
-    static void thread_get_data();
-
 };
