@@ -40,8 +40,9 @@ int main() {
     // Set cin to non-blocking mode (note: this is platform-specific)
     std::cin.unsetf(std::ios::skipws); // Don't skip whitespace
 
+    std::cout << "Core0 is running..." << std::endl;
+
     while (1) {
-        std::cout << "Core0 is running..." << std::endl;
         std::cout << "- " << std::flush;
         gpio_put(PIN_LED_STATUS, led_state);
         led_state = !led_state;
