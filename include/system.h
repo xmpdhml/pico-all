@@ -11,7 +11,6 @@ class System
 
 public:
     UartDMAStdio& io;
-    KeyScan& keys;
 
     void Reset(bool to_bootloader = true);
 
@@ -24,7 +23,6 @@ private:
     System& operator=(System&&) = delete;
 
     UartDMAStdio io_instance;
-    KeyScan keys_instance;
 };
 
 extern System& sys;

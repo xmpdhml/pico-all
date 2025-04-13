@@ -9,7 +9,7 @@ System& internal_create()
 System& sys = internal_create();
 
 System::System()
-    : io(io_instance), keys(keys_instance)
+    : io(io_instance)
 {
     // Constructor implementation
 }
