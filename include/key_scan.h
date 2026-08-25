@@ -2,46 +2,50 @@
 
 #include <vector>
 
-#include "key_codes.h"
+#include "key_matrix.h"
 
-// expect to have macros defined
-// bool KS_USE_MATRIX
-//      byte KS_ROWS, KS_COLS;
-//      int KS_ROW_PINS[KS_ROWS];
-//      int KS_COL_PINS[KS_COLS];
-//      u_short keyscan_matrix[KS_ROWS][KS_COLS];
-//      bool KS_MATRIX_ROW2COL;
-// bool KS_USE_DIRECT
-//      byte KS_DIRECTS;
-//      int KS_DIRECT_PINS[KS_DIRECTS];
-//      u_short keyscan_direct[KS_DIRECTS];
-//      bool KS_DIRECT_PULLUP;
-// bool KS_USE_ENCODER
-//      int KS_ENCODER_A_PIN;
-//      int KS_ENCODER_B_PIN;
-//      int KS_ENCODER_PULLUP;
-// u_short KS_NKRO_BEGIN;
-// u_short KS_NKRO_END;
-// u_short KS_DEBOUNCE_NS;
+/* KeyScanner：矩阵扫描 + 去抖引擎。
+ *
+ * - init()：初始化矩阵 GPIO（行输出 / 列输入 + 上下拉）；
+ * - scan()：逐行扫描 + 每键计数去抖，产出三类按键列表
+ *   （basic/extended/internal）及其变化标志，每轮主循环调用一次。
+ *
+ * 去抖：连续 kDebounceThreshold 次扫描读到同一状态才算稳定，
+ * 阈值对应约 4×扫描周期（主循环 10ms 时约 40ms）。
+ * 键位表与引脚来自 KeyMatrix（本类只负责"怎么扫"，不关心"扫出什么键"）。
+ */
 
-#ifdef KS_USE_MATRIX
-    void ks_matrix();
-#endif
+class KeyScanner
+{
+public:
+    explicit KeyScanner(const KeyMatrix& matrix);
 
-#ifdef KS_USE_DIRECT
-    void ks_direct();
-#endif
+    void init();   // GPIO 初始化（一次性）
+    void scan();   // 扫描 + 去抖（每轮主循环调用）
 
-#ifdef KS_USE_ENCODER
-    void ks_encoder();
-#endif
+    // 本帧结果
+    const std::vector<KeyCodes>& pressed_basic() const    { return pressed_basic_; }
+    const std::vector<KeyCodes>& pressed_extended() const { return pressed_extended_; }
+    const std::vector<KeyCodes>& pressed_internal() const { return pressed_internal_; }
+    bool basic_changed() const    { return basic_changed_; }
+    bool extended_changed() const { return extended_changed_; }
+    bool internal_changed() const { return internal_changed_; }
 
-void ks_init();
-void ks_scan();
+private:
+    static constexpr uint8_t kDebounceThreshold = 4;
 
-extern std::vector<KeyCodes> ks_pressed_basic;
-extern std::vector<KeyCodes> ks_pressed_extended;
-extern std::vector<KeyCodes> ks_pressed_internal;
-extern bool ks_pressed_basic_changed;
-extern bool ks_pressed_extended_changed;
-extern bool ks_pressed_internal_changed;
+    void add_pressed(KeyCodes code);
+
+    const KeyMatrix& matrix_;
+    std::vector<uint8_t> debounce_;          // [rows*cols] 去抖计数
+    std::vector<KeyCodes> last_basic_;       // 上一帧（用于变化标志）
+    std::vector<KeyCodes> last_extended_;
+    std::vector<KeyCodes> last_internal_;
+
+    std::vector<KeyCodes> pressed_basic_;
+    std::vector<KeyCodes> pressed_extended_;
+    std::vector<KeyCodes> pressed_internal_;
+    bool basic_changed_ = false;
+    bool extended_changed_ = false;
+    bool internal_changed_ = false;
+};

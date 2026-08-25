@@ -1,0 +1,51 @@
+#pragma once
+
+#include <cstdint>
+
+#include "key_codes.h"
+
+/* KeyMatrix：键盘矩阵的静态描述（行列数、引脚、键码表、扫描方向、输入侧电平）。
+ *
+ * 只描述"接线"，不触碰硬件；GPIO 扫描与去抖由 KeyScanner 完成。
+ * 数据在构造时注入、运行时只读；具体布局（键位表）在 system.cpp 定义。
+ */
+
+class KeyMatrix
+{
+public:
+    enum class Direction : uint8_t
+    {
+        RowToCol = 0,   // 行输出、列输入（默认）
+        ColToRow = 1,   // 列输出、行输入
+    };
+
+    struct Config
+    {
+        uint8_t rows = 0;
+        uint8_t cols = 0;
+        const uint8_t* row_pins = nullptr;   // [rows]
+        const uint8_t* col_pins = nullptr;   // [cols]
+        const KeyCodes* keymap = nullptr;    // [rows][cols] 行主序：key_at(r,c)
+        Direction direction = Direction::RowToCol;   // 输出侧
+        bool pullup = false;                 // 输入侧电平：true=上拉, false=下拉
+    };
+
+    explicit KeyMatrix(const Config& cfg);
+
+    uint8_t rows() const { return rows_; }
+    uint8_t cols() const { return cols_; }
+    uint8_t row_pin(uint8_t r) const { return row_pins_[r]; }
+    uint8_t col_pin(uint8_t c) const { return col_pins_[c]; }
+    KeyCodes key_at(uint8_t r, uint8_t c) const { return keymap_[r * cols_ + c]; }
+    Direction direction() const { return direction_; }
+    bool pullup() const { return pullup_; }
+
+private:
+    uint8_t rows_ = 0;
+    uint8_t cols_ = 0;
+    const uint8_t* row_pins_ = nullptr;
+    const uint8_t* col_pins_ = nullptr;
+    const KeyCodes* keymap_ = nullptr;
+    Direction direction_ = Direction::RowToCol;
+    bool pullup_ = false;
+};

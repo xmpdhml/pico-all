@@ -1,19 +1,20 @@
 /*
  * usb_hid.cpp
- * USB HID 键盘模块：TinyUSB 初始化、后台任务、报告编码与 6KRO/NKRO 模式切换。
+ * USB HID 键盘子系统（UsbHid）：TinyUSB 初始化、后台任务、报告编码与
+ * 6KRO/NKRO 模式切换。
  *
  * 职责边界：
- *  - key_scan 只产出原始 KeyCodes（ks_pressed_basic/extended/internal），
+ *  - KeyScanner 只产出原始 KeyCodes（pressed_basic/extended/internal），
  *    不关心报告格式；
- *  - 本模块独占所有报告编码、模式状态与切换，对外只暴露 usb_hid.h 的接口；
+ *  - 本类独占所有报告编码、模式状态与切换；
  *  - 模式切换内部动作（KEY_P_NKRO_ON_OFF / KEY_P_NKRO / KEY_P_6KRO）
- *    在本模块内部消费 ks_pressed_internal 完成。
+ *    在 task() 内部消费扫描结果完成。
+ *  - 由 System 单例持有（sys.hid），见 system.h/system.cpp。
  */
 
 #include "usb_hid.h"
 
 #include <string.h>
-#include <vector>
 #include <algorithm>
 
 #include "tusb.h"
@@ -22,107 +23,23 @@
 #include "key_scan.h"
 
 /* ==================================================================== */
-/* 内部状态（模块私有）                                                   */
+/* 构造                                                                  */
 /* ==================================================================== */
 
-static bool nkro_mode = false;               // 当前模式：true=NKRO, false=6KRO
-static bool last_report_is_nkro = false;     // 上次发送的报告格式（模式切换时强制重发）
-
-static hid_keyboard_report_t last_report6 = {0};
-static uint8_t last_nkro_report[2 + NKRO_BITMAP_SIZE] = {0};
-
-/* ==================================================================== */
-/* 报告编码（key_scan 产出的是原始 KeyCodes，这里才编码为 HID 报告）       */
-/* ==================================================================== */
-
-// 6KRO（Boot 键盘格式）：修饰键进 modifier 字节，其余键最多 6 个
-static void build_report_6kro(const std::vector<KeyCodes>& pressed,
-                              hid_keyboard_report_t& out) {
-    out = {};
-    uint8_t idx = 0;
-    for (KeyCodes k : pressed) {
-        if (k >= KEY_LEFT_CTRL && k <= KEY_RIGHT_GUI) {
-            // 修饰键（0xE0~0xE7）→ modifier 字节
-            out.modifier |= (uint8_t)(1u << (k - KEY_LEFT_CTRL));
-        } else if (k > KEY_NULL && k <= KEY_RIGHT_GUI) {
-            // 普通键：最多 6 个（超出丢弃，这是 6KRO 的语义）
-            if (idx < 6) out.keycode[idx++] = (uint8_t)k;
-        }
-        // 扩展（KEY_E_*）/私有（KEY_P_*）不在此处理
-    }
-}
-
-// NKRO（256 键位图）：modifier 字节 + 保留字节 + 32 字节位图
-static void build_report_nkro(const std::vector<KeyCodes>& pressed,
-                              uint8_t (&out)[2 + NKRO_BITMAP_SIZE]) {
-    memset(out, 0, 2 + NKRO_BITMAP_SIZE);
-    for (KeyCodes k : pressed) {
-        if (k >= KEY_LEFT_CTRL && k <= KEY_RIGHT_GUI) {
-            out[0] |= (uint8_t)(1u << (k - KEY_LEFT_CTRL));
-        } else if (k > KEY_NULL && k <= KEY_RIGHT_GUI) {
-            out[2 + (k >> 3)] |= (uint8_t)(1u << (k & 7));
-        }
-    }
-}
-
-/* ==================================================================== */
-/* 上报（仅在变化时发送；模式切换后强制重发）                              */
-/* ==================================================================== */
-
-static void send_reports(const std::vector<KeyCodes>& pressed) {
-    if (nkro_mode) {
-        uint8_t nkro_report[2 + NKRO_BITMAP_SIZE];
-        build_report_nkro(pressed, nkro_report);
-        if (!last_report_is_nkro ||
-            memcmp(nkro_report, last_nkro_report, sizeof(nkro_report)) != 0) {
-            memcpy(last_nkro_report, nkro_report, sizeof(nkro_report));
-            last_report_is_nkro = true;
-            tud_hid_report(REPORT_ID_NKRO, nkro_report, sizeof(nkro_report));
-        }
-    } else {
-        hid_keyboard_report_t report6;
-        build_report_6kro(pressed, report6);
-        if (last_report_is_nkro ||
-            memcmp(&report6, &last_report6, sizeof(report6)) != 0) {
-            last_report6 = report6;
-            last_report_is_nkro = false;
-            tud_hid_keyboard_report(REPORT_ID_KEYBOARD, report6.modifier,
-                                    report6.keycode);
-        }
-    }
-}
-
-/* ==================================================================== */
-/* 内部动作：KEY_P_* 私有键的按下沿处理（模式切换）                       */
-/* ==================================================================== */
-
-static void handle_internal_actions() {
-    static std::vector<KeyCodes> prev_pressed;
-
-    for (KeyCodes k : ks_pressed_internal) {
-        if (std::find(prev_pressed.begin(), prev_pressed.end(), k)
-                != prev_pressed.end()) {
-            continue; // 之前已按下，不是上升沿
-        }
-        switch (k) {
-            case KEY_P_NKRO_ON_OFF: usb_hid_toggle_nkro(); break;
-            case KEY_P_NKRO:        usb_hid_set_nkro(true);  break;
-            case KEY_P_6KRO:        usb_hid_set_nkro(false); break;
-            default: break; // 其他私有动作暂未实现
-        }
-    }
-    prev_pressed = ks_pressed_internal;
+UsbHid::UsbHid(const KeyScanner& scan)
+    : scan_(scan)
+{
 }
 
 /* ==================================================================== */
 /* 公开接口                                                              */
 /* ==================================================================== */
 
-void usb_hid_init() {
+void UsbHid::init() {
     tusb_init();
 }
 
-void usb_hid_task() {
+void UsbHid::task() {
     tud_task(); // TinyUSB 后台任务（枚举/中断）
 
     if (!tud_hid_ready()) {
@@ -141,19 +58,20 @@ void usb_hid_task() {
         send_reports({});
     }
 #else
-    send_reports(ks_pressed_basic);
+    send_reports(scan_.pressed_basic());            // 6KRO / NKRO 键盘
+    send_consumer_report(scan_.pressed_extended()); // Consumer 媒体（位图，多键同报）
 #endif
 }
 
-bool usb_hid_nkro_enabled() {
-    return nkro_mode;
+bool UsbHid::nkro_enabled() const {
+    return nkro_mode_;
 }
 
-void usb_hid_set_nkro(bool enable) {
-    if (nkro_mode == enable) {
+void UsbHid::set_nkro(bool enable) {
+    if (nkro_mode_ == enable) {
         return;
     }
-    nkro_mode = enable;
+    nkro_mode_ = enable;
 
     // 模式变化：立即发空报告，让主机清掉旧模式下的按键状态
     if (enable) {
@@ -165,8 +83,124 @@ void usb_hid_set_nkro(bool enable) {
     }
 }
 
-void usb_hid_toggle_nkro() {
-    usb_hid_set_nkro(!nkro_mode);
+void UsbHid::toggle_nkro() {
+    set_nkro(!nkro_mode_);
+}
+
+/* ==================================================================== */
+/* 内部动作：KEY_P_* 私有键的按下沿处理（模式切换）                       */
+/* ==================================================================== */
+
+void UsbHid::handle_internal_actions() {
+    for (KeyCodes k : scan_.pressed_internal()) {
+        if (std::find(prev_internal_.begin(), prev_internal_.end(), k)
+                != prev_internal_.end()) {
+            continue; // 之前已按下，不是上升沿
+        }
+        switch (k) {
+            case KEY_P_NKRO_ON_OFF: toggle_nkro(); break;
+            case KEY_P_NKRO:        set_nkro(true);  break;
+            case KEY_P_6KRO:        set_nkro(false); break;
+            default: break; // 其他私有动作暂未实现
+        }
+    }
+    prev_internal_ = scan_.pressed_internal();
+}
+
+/* ==================================================================== */
+/* 报告编码（key_scan 产出的是原始 KeyCodes，这里才编码为 HID 报告）       */
+/* ==================================================================== */
+
+void UsbHid::build_report_6kro(const std::vector<KeyCodes>& pressed,
+                               hid_keyboard_report_t& out) const {
+    out = {};
+    uint8_t idx = 0;
+    for (KeyCodes k : pressed) {
+        if (k >= KEY_LEFT_CTRL && k <= KEY_RIGHT_GUI) {
+            // 修饰键（0xE0~0xE7）→ modifier 字节
+            out.modifier |= (uint8_t)(1u << (k - KEY_LEFT_CTRL));
+        } else if (k > KEY_NULL && k <= KEY_RIGHT_GUI) {
+            // 普通键：最多 6 个（超出丢弃，这是 6KRO 的语义）
+            if (idx < 6) out.keycode[idx++] = (uint8_t)k;
+        }
+        // 扩展（KEY_E_*）/私有（KEY_P_*）不在此处理
+    }
+}
+
+void UsbHid::build_report_nkro(const std::vector<KeyCodes>& pressed,
+                               uint8_t (&out)[2 + NKRO_BITMAP_SIZE]) const {
+    memset(out, 0, 2 + NKRO_BITMAP_SIZE);
+    for (KeyCodes k : pressed) {
+        if (k >= KEY_LEFT_CTRL && k <= KEY_RIGHT_GUI) {
+            out[0] |= (uint8_t)(1u << (k - KEY_LEFT_CTRL));
+        } else if (k > KEY_NULL && k <= KEY_RIGHT_GUI) {
+            out[2 + (k >> 3)] |= (uint8_t)(1u << (k & 7));
+        }
+    }
+}
+
+bool UsbHid::key_to_consumer_usage(KeyCodes key, uint16_t& usage) {
+    switch (key) {
+        case KEY_E_PLAY_PAUSE: usage = 0x00CD; return true;
+        case KEY_E_STOP:       usage = 0x00B7; return true;
+        case KEY_E_NEXT_TRACK: usage = 0x00B5; return true;
+        case KEY_E_PREV_TRACK: usage = 0x00B6; return true;
+        case KEY_E_MUTE:       usage = 0x00E2; return true;
+        case KEY_E_VOL_INC:    usage = 0x00E9; return true;
+        case KEY_E_VOL_DEC:    usage = 0x00EA; return true;
+        default: return false;
+    }
+}
+
+void UsbHid::build_report_consumer(const std::vector<KeyCodes>& pressed,
+                                   uint8_t (&out)[CONSUMER_BITMAP_SIZE]) const {
+    memset(out, 0, CONSUMER_BITMAP_SIZE);
+    for (KeyCodes k : pressed) {
+        uint16_t usage;
+        if (!key_to_consumer_usage(k, usage)) continue;
+        if (usage < CONSUMER_USAGE_MIN || usage > CONSUMER_USAGE_MAX) continue;
+        uint16_t bit = usage - CONSUMER_USAGE_MIN; // 0..63
+        out[bit >> 3] |= (uint8_t)(1u << (bit & 7));
+    }
+}
+
+/* ==================================================================== */
+/* 上报（仅在变化时发送；模式切换后强制重发）                              */
+/* ==================================================================== */
+
+void UsbHid::send_reports(const std::vector<KeyCodes>& pressed) {
+    if (nkro_mode_) {
+        uint8_t nkro_report[2 + NKRO_BITMAP_SIZE];
+        build_report_nkro(pressed, nkro_report);
+        if (!last_report_is_nkro_ ||
+            memcmp(nkro_report, last_nkro_report_, sizeof(nkro_report)) != 0) {
+            memcpy(last_nkro_report_, nkro_report, sizeof(nkro_report));
+            last_report_is_nkro_ = true;
+            tud_hid_report(REPORT_ID_NKRO, nkro_report, sizeof(nkro_report));
+        }
+    } else {
+        hid_keyboard_report_t report6;
+        build_report_6kro(pressed, report6);
+        if (last_report_is_nkro_ ||
+            memcmp(&report6, &last_report6_, sizeof(report6)) != 0) {
+            last_report6_ = report6;
+            last_report_is_nkro_ = false;
+            tud_hid_keyboard_report(REPORT_ID_KEYBOARD, report6.modifier,
+                                    report6.keycode);
+        }
+    }
+}
+
+void UsbHid::send_consumer_report(const std::vector<KeyCodes>& pressed) {
+    uint8_t consumer_report[CONSUMER_BITMAP_SIZE];
+    build_report_consumer(pressed, consumer_report);
+    if (memcmp(consumer_report, last_consumer_report_,
+               sizeof(consumer_report)) != 0) {
+        memcpy(last_consumer_report_, consumer_report,
+               sizeof(consumer_report));
+        tud_hid_report(REPORT_ID_CONSUMER, consumer_report,
+                       sizeof(consumer_report));
+    }
 }
 
 /* ==================================================================== */

@@ -19,7 +19,8 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 
 pico_sdk_init()
 
-file(GLOB_RECURSE SOURCES "src/*.c" "src/*.cpp")
+# CONFIGURE_DEPENDS：新增/删除源文件时自动重新扫描 glob，无需手动重新 cmake -B
+file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS "src/*.c" "src/*.cpp")
 
 add_executable(${PROJECT_NAME} ${SOURCES})
 
