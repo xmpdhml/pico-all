@@ -11,23 +11,18 @@ KeyScanner::KeyScanner(const KeyMatrix& matrix)
 
 void KeyScanner::init()
 {
-    // 输出侧（行）：默认驱动到非激活电平
-    const uint8_t inactive = matrix_.pullup() ? 1 : 0;
+    // 输出侧（行）：默认驱动到高电平（非激活）
     for (uint8_t r = 0; r < matrix_.rows(); r++) {
         gpio_init(matrix_.row_pin(r));
         gpio_set_dir(matrix_.row_pin(r), GPIO_OUT);
-        gpio_put(matrix_.row_pin(r), inactive);
+        gpio_put(matrix_.row_pin(r), 1);
     }
 
-    // 输入侧（列）：上下拉
+    // 输入侧（列）：统一上拉（只支持 pullup 方案）
     for (uint8_t c = 0; c < matrix_.cols(); c++) {
         gpio_init(matrix_.col_pin(c));
         gpio_set_dir(matrix_.col_pin(c), GPIO_IN);
-        if (matrix_.pullup()) {
-            gpio_pull_up(matrix_.col_pin(c));
-        } else {
-            gpio_pull_down(matrix_.col_pin(c));
-        }
+        gpio_pull_up(matrix_.col_pin(c));
     }
 }
 
@@ -37,16 +32,15 @@ void KeyScanner::scan()
     pressed_extended_.clear();
     pressed_internal_.clear();
 
-    const bool pullup = matrix_.pullup();
-    const uint8_t active = pullup ? 0 : 1;         // 激活行驱动电平
-    const uint8_t pressed_level = pullup ? 0 : 1;  // 输入读到"按下"的电平
+    // 只支持 pullup：激活行拉低（0），按下时列读到 0
+    const uint8_t active = 0;
 
     for (uint8_t r = 0; r < matrix_.rows(); r++) {
         gpio_put(matrix_.row_pin(r), active);
         sleep_us(5);   // 电平稳定
 
         for (uint8_t c = 0; c < matrix_.cols(); c++) {
-            const bool raw = (gpio_get(matrix_.col_pin(c)) == pressed_level);
+            const bool raw = (gpio_get(matrix_.col_pin(c)) == 0);
             const size_t idx = (size_t)r * matrix_.cols() + c;
 
             // 每键计数去抖：连续按下/释放超过阈值才算稳定
@@ -62,7 +56,7 @@ void KeyScanner::scan()
             }
         }
 
-        gpio_put(matrix_.row_pin(r), active ^ 1);  // 释放行（回非激活电平）
+        gpio_put(matrix_.row_pin(r), 1);  // 释放行（回高电平）
     }
 
     // 变化标志

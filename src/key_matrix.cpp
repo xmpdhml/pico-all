@@ -6,7 +6,6 @@ KeyMatrix::KeyMatrix(const Config& cfg)
       row_pins_(cfg.row_pins),
       col_pins_(cfg.col_pins),
       keymap_(cfg.keymap),
-      direction_(cfg.direction),
-      pullup_(cfg.pullup)
+      direction_(cfg.direction)
 {
 }

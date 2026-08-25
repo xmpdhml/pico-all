@@ -17,9 +17,9 @@
 
 class KeyScanner
 {
-public:
-    explicit KeyScanner(const KeyMatrix& matrix);
+    friend class System;   // 仅 System 可创建（参照 UartDMAStdio 模式）
 
+public:
     void init();   // GPIO 初始化（一次性）
     void scan();   // 扫描 + 去抖（每轮主循环调用）
 
@@ -32,6 +32,13 @@ public:
     bool internal_changed() const { return internal_changed_; }
 
 private:
+    explicit KeyScanner(const KeyMatrix& matrix);
+    ~KeyScanner() = default;
+    KeyScanner(const KeyScanner&) = delete;
+    KeyScanner& operator=(const KeyScanner&) = delete;
+    KeyScanner(KeyScanner&&) = delete;
+    KeyScanner& operator=(KeyScanner&&) = delete;
+
     static constexpr uint8_t kDebounceThreshold = 4;
 
     void add_pressed(KeyCodes code);

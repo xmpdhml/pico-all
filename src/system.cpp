@@ -30,7 +30,6 @@ static const KeyMatrix::Config kMatrixConfig = {
     .col_pins   = kColPins,
     .keymap     = &kKeymap[0][0],
     .direction  = KeyMatrix::Direction::RowToCol,
-    .pullup     = false,
 };
 
 System& internal_create()
