@@ -119,6 +119,36 @@ uint8_t const desc_hid_report[] = {
       HID_REPORT_SIZE ( 1 ),
       HID_INPUT       ( HID_DATA | HID_VARIABLE | HID_ABSOLUTE ),
     HID_COLLECTION_END,
+
+    /* ============ Consumer / 系统键 Power/Reset/Sleep（位图） ============ */
+    HID_USAGE_PAGE ( HID_USAGE_PAGE_CONSUMER ),
+    HID_USAGE      ( HID_USAGE_CONSUMER_CONTROL ),
+    HID_COLLECTION ( HID_COLLECTION_APPLICATION ),
+      HID_REPORT_ID ( REPORT_ID_CONSUMER_SYS )
+      /* 3 位位图：bit N = usage (CONSUMER_SYS_USAGE_MIN + N) */
+      HID_LOGICAL_MIN ( 0 ),
+      HID_LOGICAL_MAX ( 1 ),
+      HID_USAGE_MIN   ( CONSUMER_SYS_USAGE_MIN ),
+      HID_USAGE_MAX   ( CONSUMER_SYS_USAGE_MAX ),
+      HID_REPORT_COUNT( (CONSUMER_SYS_USAGE_MAX - CONSUMER_SYS_USAGE_MIN + 1) ),
+      HID_REPORT_SIZE ( 1 ),
+      HID_INPUT       ( HID_DATA | HID_VARIABLE | HID_ABSOLUTE ),
+    HID_COLLECTION_END,
+
+    /* ============ Consumer / 应用启动 AL_*（位图） ============ */
+    HID_USAGE_PAGE ( HID_USAGE_PAGE_CONSUMER ),
+    HID_USAGE      ( HID_USAGE_CONSUMER_CONTROL ),
+    HID_COLLECTION ( HID_COLLECTION_APPLICATION ),
+      HID_REPORT_ID ( REPORT_ID_CONSUMER_APP )
+      /* 67 位位图：bit N = usage (CONSUMER_APP_USAGE_MIN + N)（usage>255 用 2 字节） */
+      HID_LOGICAL_MIN ( 0 ),
+      HID_LOGICAL_MAX ( 1 ),
+      HID_USAGE_MIN_N ( CONSUMER_APP_USAGE_MIN, 2 ),
+      HID_USAGE_MAX_N ( CONSUMER_APP_USAGE_MAX, 2 ),
+      HID_REPORT_COUNT( (CONSUMER_APP_USAGE_MAX - CONSUMER_APP_USAGE_MIN + 1) ),
+      HID_REPORT_SIZE ( 1 ),
+      HID_INPUT       ( HID_DATA | HID_VARIABLE | HID_ABSOLUTE ),
+    HID_COLLECTION_END,
 };
 
 /* ------------------------------------------------------------------ */

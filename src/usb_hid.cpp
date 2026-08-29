@@ -59,7 +59,9 @@ void UsbHid::task() {
     }
 #else
     send_reports(scan_.pressed_basic());            // 6KRO / NKRO 键盘
-    send_consumer_report(scan_.pressed_extended()); // Consumer 媒体（位图，多键同报）
+    send_consumer_report(scan_.pressed_extended()); // Consumer 媒体（位图）
+    send_report_system(scan_.pressed_extended());   // Consumer 系统键（位图）
+    send_report_app(scan_.pressed_extended());      // Consumer 应用启动（位图）
 #endif
 }
 
@@ -139,8 +141,13 @@ void UsbHid::build_report_nkro(const std::vector<KeyCodes>& pressed,
     }
 }
 
-bool UsbHid::key_to_consumer_usage(KeyCodes key, uint16_t& usage) {
+bool UsbHid::key_to_usage(KeyCodes key, uint16_t& usage) {
     switch (key) {
+        // 系统键（0x30~0x32）
+        case KEY_E_POWER: usage = 0x0030; return true;
+        case KEY_E_RESET: usage = 0x0031; return true;
+        case KEY_E_SLEEP: usage = 0x0032; return true;
+        // 媒体（0xB0~0xEF）
         case KEY_E_PLAY_PAUSE: usage = 0x00CD; return true;
         case KEY_E_STOP:       usage = 0x00B7; return true;
         case KEY_E_NEXT_TRACK: usage = 0x00B5; return true;
@@ -148,8 +155,15 @@ bool UsbHid::key_to_consumer_usage(KeyCodes key, uint16_t& usage) {
         case KEY_E_MUTE:       usage = 0x00E2; return true;
         case KEY_E_VOL_INC:    usage = 0x00E9; return true;
         case KEY_E_VOL_DEC:    usage = 0x00EA; return true;
-        default: return false;
+        default: break;
     }
+    // 应用启动 AL_*：枚举顺序即 usage 顺序（自 0x184 起偏移），覆盖全部
+    // KEY_E_AL_*；个别键若需精确 usage，可在上面补显式 case。
+    if (key >= KEY_E_AL_WORD && key <= KEY_E_AL_AUDIO_PLAYER) {
+        usage = (uint16_t)(CONSUMER_APP_USAGE_MIN + (key - KEY_E_AL_WORD));
+        return true;
+    }
+    return false;
 }
 
 void UsbHid::build_report_consumer(const std::vector<KeyCodes>& pressed,
@@ -157,9 +171,33 @@ void UsbHid::build_report_consumer(const std::vector<KeyCodes>& pressed,
     memset(out, 0, CONSUMER_BITMAP_SIZE);
     for (KeyCodes k : pressed) {
         uint16_t usage;
-        if (!key_to_consumer_usage(k, usage)) continue;
+        if (!key_to_usage(k, usage)) continue;
         if (usage < CONSUMER_USAGE_MIN || usage > CONSUMER_USAGE_MAX) continue;
         uint16_t bit = usage - CONSUMER_USAGE_MIN; // 0..63
+        out[bit >> 3] |= (uint8_t)(1u << (bit & 7));
+    }
+}
+
+void UsbHid::build_report_system(const std::vector<KeyCodes>& pressed,
+                                 uint8_t (&out)[CONSUMER_SYS_BITMAP_SIZE]) const {
+    memset(out, 0, CONSUMER_SYS_BITMAP_SIZE);
+    for (KeyCodes k : pressed) {
+        uint16_t usage;
+        if (!key_to_usage(k, usage)) continue;
+        if (usage < CONSUMER_SYS_USAGE_MIN || usage > CONSUMER_SYS_USAGE_MAX) continue;
+        uint16_t bit = usage - CONSUMER_SYS_USAGE_MIN; // 0..2
+        out[bit >> 3] |= (uint8_t)(1u << (bit & 7));
+    }
+}
+
+void UsbHid::build_report_app(const std::vector<KeyCodes>& pressed,
+                              uint8_t (&out)[CONSUMER_APP_BITMAP_SIZE]) const {
+    memset(out, 0, CONSUMER_APP_BITMAP_SIZE);
+    for (KeyCodes k : pressed) {
+        uint16_t usage;
+        if (!key_to_usage(k, usage)) continue;
+        if (usage < CONSUMER_APP_USAGE_MIN || usage > CONSUMER_APP_USAGE_MAX) continue;
+        uint16_t bit = usage - CONSUMER_APP_USAGE_MIN; // 0..66
         out[bit >> 3] |= (uint8_t)(1u << (bit & 7));
     }
 }
@@ -200,6 +238,24 @@ void UsbHid::send_consumer_report(const std::vector<KeyCodes>& pressed) {
                sizeof(consumer_report));
         tud_hid_report(REPORT_ID_CONSUMER, consumer_report,
                        sizeof(consumer_report));
+    }
+}
+
+void UsbHid::send_report_system(const std::vector<KeyCodes>& pressed) {
+    uint8_t sys_report[CONSUMER_SYS_BITMAP_SIZE];
+    build_report_system(pressed, sys_report);
+    if (memcmp(sys_report, last_sys_report_, sizeof(sys_report)) != 0) {
+        memcpy(last_sys_report_, sys_report, sizeof(sys_report));
+        tud_hid_report(REPORT_ID_CONSUMER_SYS, sys_report, sizeof(sys_report));
+    }
+}
+
+void UsbHid::send_report_app(const std::vector<KeyCodes>& pressed) {
+    uint8_t app_report[CONSUMER_APP_BITMAP_SIZE];
+    build_report_app(pressed, app_report);
+    if (memcmp(app_report, last_app_report_, sizeof(app_report)) != 0) {
+        memcpy(last_app_report_, app_report, sizeof(app_report));
+        tud_hid_report(REPORT_ID_CONSUMER_APP, app_report, sizeof(app_report));
     }
 }
 

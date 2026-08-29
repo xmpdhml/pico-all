@@ -3,11 +3,14 @@
 #include <stdio.h>
 #include <iostream>
 #include <string>
+#include <algorithm>
 
 #include "pico/stdlib.h"
 #include "pico/stdio.h"
 #include "pico/error.h"
+#include "pico/bootrom.h"       // reset_usb_boot：软件进 UF2 引导
 #include "hardware/gpio.h"
+#include "hardware/watchdog.h"  // watchdog_reboot：软复位
 
 #ifdef PICO_DEFAULT_UART_BAUD_RATE
 #   define BAUD_RATE PICO_DEFAULT_UART_BAUD_RATE
@@ -85,6 +88,9 @@ void System::run()
         scan.scan();
         hid.task();
 
+        // 系统级内部动作：进引导 / 软复位（按下沿）
+        handle_reset_actions();
+
         // LED 闪烁指示主循环存活
         gpio_put(PIN_LED_STATUS, led_state);
         led_state = !led_state;
@@ -104,5 +110,32 @@ void System::run()
 
         sleep_ms(10); // 10ms：USB HID 轮询周期
     }
+}
+
+void System::Reset(bool to_bootloader)
+{
+    if (to_bootloader) {
+        // 进入 UF2 引导（U 盘模式），不返回
+        reset_usb_boot(0, 0);
+    } else {
+        // 软复位：重新执行固件
+        watchdog_reboot(0, 0, 0);
+    }
+}
+
+void System::handle_reset_actions()
+{
+    for (KeyCodes k : scan.pressed_internal()) {
+        if (std::find(prev_internal_.begin(), prev_internal_.end(), k)
+                != prev_internal_.end()) {
+            continue; // 之前已按下，不是上升沿
+        }
+        switch (k) {
+            case KEY_P_USB_BURN: Reset(true);  break;   // 进引导
+            case KEY_P_REBOOT:   Reset(false); break;   // 软复位
+            default: break;
+        }
+    }
+    prev_internal_ = scan.pressed_internal();
 }
 

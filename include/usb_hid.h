@@ -49,11 +49,17 @@ private:
                            uint8_t (&out)[2 + NKRO_BITMAP_SIZE]) const;
     void build_report_consumer(const std::vector<KeyCodes>& pressed,
                                uint8_t (&out)[CONSUMER_BITMAP_SIZE]) const;
-    static bool key_to_consumer_usage(KeyCodes key, uint16_t& usage);
+    void build_report_system(const std::vector<KeyCodes>& pressed,
+                             uint8_t (&out)[CONSUMER_SYS_BITMAP_SIZE]) const;
+    void build_report_app(const std::vector<KeyCodes>& pressed,
+                          uint8_t (&out)[CONSUMER_APP_BITMAP_SIZE]) const;
+    static bool key_to_usage(KeyCodes key, uint16_t& usage);
 
     // ---- 上报（仅在变化时发送） ----
     void send_reports(const std::vector<KeyCodes>& pressed);
     void send_consumer_report(const std::vector<KeyCodes>& pressed);
+    void send_report_system(const std::vector<KeyCodes>& pressed);
+    void send_report_app(const std::vector<KeyCodes>& pressed);
 
     // ---- 内部动作（KEY_P_* 私有键按下沿处理） ----
     void handle_internal_actions();
@@ -64,6 +70,8 @@ private:
     hid_keyboard_report_t last_report6_ = {};
     uint8_t last_nkro_report_[2 + NKRO_BITMAP_SIZE] = {};
     uint8_t last_consumer_report_[CONSUMER_BITMAP_SIZE] = {};
+    uint8_t last_sys_report_[CONSUMER_SYS_BITMAP_SIZE] = {};
+    uint8_t last_app_report_[CONSUMER_APP_BITMAP_SIZE] = {};
     std::vector<KeyCodes> prev_internal_;  // 内部键按下沿检测
 
     const KeyScanner& scan_;              // 扫描结果来源（依赖注入）
