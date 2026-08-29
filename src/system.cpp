@@ -12,6 +12,20 @@
 #include "hardware/gpio.h"
 #include "hardware/watchdog.h"  // watchdog_reboot：软复位
 
+#include "FreeRTOS.h"
+#include "task.h"
+
+/* FreeRTOS 栈溢出钩子：致命错误，立即停机。
+ * 溢出时栈可能已耗尽，不做 printf 等复杂操作，直接死循环。 */
+extern "C" void vApplicationStackOverflowHook(TaskHandle_t xTask, char* pcTaskName)
+{
+    (void)xTask;
+    (void)pcTaskName;
+    for (;;) {
+        tight_loop_contents();
+    }
+}
+
 #ifdef PICO_DEFAULT_UART_BAUD_RATE
 #   define BAUD_RATE PICO_DEFAULT_UART_BAUD_RATE
 #else
@@ -49,7 +63,8 @@ System::System()
       scan(scan_instance),
       hid(hid_instance),
       matrix_instance(kMatrixConfig),
-      scan_instance(matrix_instance),
+      matrix_io_instance(matrix_instance),
+      scan_instance(matrix_instance, matrix_io_instance),
       hid_instance(scan_instance)
 {
 }
@@ -72,30 +87,51 @@ void System::init()
 
     sleep_ms(1000);
 
-    std::cout << "Starting main loop with standard I/O..." << std::endl;
+    std::cout << "Starting FreeRTOS SMP scheduler..." << std::endl;
 }
 
 void System::run()
 {
-    std::cout << "Core0 is running..." << std::endl;
+    // 创建任务（在调度器启动前创建；任务体不会在 vTaskStartScheduler 前运行）
+    xTaskCreate(&System::keyboard_task, "keyboard", 1024, nullptr, 4, nullptr);
+    xTaskCreate(&System::system_task,   "system",   1024, nullptr, 1, nullptr);
 
-    // UART 控制台行缓冲（非阻塞读取）
-    std::string console_line;
-    bool led_state = false;
+    // 启动调度器：双核 SMP，永不返回（除非堆不足导致空闲任务创建失败）
+    vTaskStartScheduler();
 
+    // 调度器启动失败：报告并停机
+    std::cout << "FATAL: vTaskStartScheduler() returned" << std::endl;
     while (true) {
-        // 扫描 + 去抖 + TinyUSB/HID 后台任务（每轮都跑，保证 HID 及时响应）
-        scan.scan();
-        hid.task();
+        tight_loop_contents();
+    }
+}
 
-        // 系统级内部动作：进引导 / 软复位（按下沿）
-        handle_reset_actions();
+void System::keyboard_task(void* pv)
+{
+    (void)pv;
+    TickType_t last_wake = xTaskGetTickCount();
+    while (true) {
+        // 扫描 + 去抖 + TinyUSB/HID 上报 + 内部动作（与旧主循环同节奏：10ms）
+        sys.scan.scan();
+        sys.hid.task();
+        sys.handle_reset_actions();
 
-        // LED 闪烁指示主循环存活
+        vTaskDelayUntil(&last_wake, pdMS_TO_TICKS(10));
+    }
+}
+
+void System::system_task(void* pv)
+{
+    (void)pv;
+    std::string console_line;   // 控制台行缓冲（非阻塞读取）
+    bool led_state = false;
+    TickType_t last_wake = xTaskGetTickCount();
+    while (true) {
+        // LED 心跳：指示任务存活
         gpio_put(PIN_LED_STATUS, led_state);
         led_state = !led_state;
 
-        // 非阻塞读取 UART 控制台输入（不阻塞主循环，保证 USB 及时响应）
+        // 非阻塞读取 UART 控制台输入
         int c;
         while ((c = getchar_timeout_us(0)) != PICO_ERROR_TIMEOUT) {
             if (c == '\r' || c == '\n') {
@@ -108,7 +144,7 @@ void System::run()
             }
         }
 
-        sleep_ms(10); // 10ms：USB HID 轮询周期
+        vTaskDelayUntil(&last_wake, pdMS_TO_TICKS(10));
     }
 }
 
