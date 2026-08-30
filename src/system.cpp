@@ -1,4 +1,5 @@
 #include "system.h"
+#include "keyboard_config.h"
 
 #include <stdio.h>
 #include <iostream>
@@ -34,22 +35,8 @@ extern "C" void vApplicationStackOverflowHook(TaskHandle_t xTask, char* pcTaskNa
 #   define BAUD_RATE 1500000
 #endif
 
-/* 3×3 矩阵布局（引脚取自 pinlist.h；键码表为占位，按实际 PCB 调整） */
-static const uint8_t kRowPins[] = { PIN_ROW1, PIN_ROW2, PIN_ROW3 };
-static const uint8_t kColPins[] = { PIN_COL0, PIN_COL1, PIN_COL2 };
-static const KeyCodes kKeymap[3][3] = {
-    { KEY_A, KEY_B, KEY_C },
-    { KEY_D, KEY_E, KEY_F },
-    { KEY_G, KEY_H, KEY_I },
-};
-static const KeyMatrix::Config kMatrixConfig = {
-    .rows       = 3,
-    .cols       = 3,
-    .row_pins   = kRowPins,
-    .col_pins   = kColPins,
-    .keymap     = &kKeymap[0][0],
-    .direction  = KeyMatrix::Direction::RowToCol,
-};
+/* 引脚与键位定义集中在 include/keyboard_config.h（keyboard_config 命名空间），此处只引用。 */
+namespace cfg = keyboard_config;
 
 System& internal_create()
 {
@@ -64,7 +51,7 @@ System::System()
       matrix(matrix_instance),
       scan(scan_instance),
       hid(hid_instance),
-      matrix_instance(kMatrixConfig),
+      matrix_instance(cfg::kMatrixConfig),
       matrix_io_instance(matrix_instance),
       scan_instance(matrix_instance, matrix_io_instance),
       hid_instance(scan_instance)
@@ -75,7 +62,7 @@ void System::init()
 {
     // 自定义 UART DMA stdio（调试输出）——必须最先初始化，
     // 之后 DEBUG_LOG/printf 才会真正经 uart_dma_stdio 输出（此前无任何已启用驱动，输出被静默丢弃）
-    io.init(PIN_UART_IO_OUT, PIN_UART_IO_IN, BAUD_RATE);
+    io.init(cfg::kUartTxPin, cfg::kUartRxPin, BAUD_RATE);
     printf("Hello, world! customized\n");
     DEBUG_LOG("SYS", "init begin");
 
@@ -88,9 +75,9 @@ void System::init()
     DEBUG_LOG("SYS", "matrix scan init done (%dx%d)", matrix.rows(), matrix.cols());
 
     // LED 指示
-    gpio_init(PIN_LED_STATUS);
-    gpio_set_dir(PIN_LED_STATUS, GPIO_OUT);
-    DEBUG_LOG("SYS", "LED init done (GP%d)", PIN_LED_STATUS);
+    gpio_init(cfg::kLedPin);
+    gpio_set_dir(cfg::kLedPin, GPIO_OUT);
+    DEBUG_LOG("SYS", "LED init done (GP%d)", cfg::kLedPin);
 
     sleep_ms(1000);
 
@@ -146,7 +133,7 @@ void System::system_task(void* pv)
     TickType_t last_wake = xTaskGetTickCount();
     while (true) {
         // LED 心跳：指示任务存活
-        gpio_put(PIN_LED_STATUS, led_state);
+        gpio_put(cfg::kLedPin, led_state);
         led_state = !led_state;
 
         // ---- 遗留的 UART echo 回显测试代码，已注释（保留以备日后参考） ----

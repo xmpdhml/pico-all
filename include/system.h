@@ -2,8 +2,6 @@
 
 #include <vector>
 
-#include "pinlist.h"
-
 #include "uart_dma_stdio.h"
 #include "key_matrix.h"
 #include "gpio_matrix_io.h"
