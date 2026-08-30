@@ -12,6 +12,8 @@
 #include "hardware/gpio.h"
 #include "hardware/watchdog.h"  // watchdog_reboot：软复位
 
+#include "debug_log.h"
+
 #include "FreeRTOS.h"
 #include "task.h"
 
@@ -71,19 +73,24 @@ System::System()
 
 void System::init()
 {
-    // 自定义 UART DMA stdio（调试输出）
+    // 自定义 UART DMA stdio（调试输出）——必须最先初始化，
+    // 之后 DEBUG_LOG/printf 才会真正经 uart_dma_stdio 输出（此前无任何已启用驱动，输出被静默丢弃）
     io.init(PIN_UART_IO_OUT, PIN_UART_IO_IN, BAUD_RATE);
     printf("Hello, world! customized\n");
+    DEBUG_LOG("SYS", "init begin");
 
     // TinyUSB HID 键盘（上电枚举为 USB 键盘）
     hid.init();
+    DEBUG_LOG("SYS", "USB HID init done");
 
     // 矩阵 GPIO（行输出 / 列输入 + 去抖）
     scan.init();
+    DEBUG_LOG("SYS", "matrix scan init done (%dx%d)", matrix.rows(), matrix.cols());
 
     // LED 指示
     gpio_init(PIN_LED_STATUS);
     gpio_set_dir(PIN_LED_STATUS, GPIO_OUT);
+    DEBUG_LOG("SYS", "LED init done (GP%d)", PIN_LED_STATUS);
 
     sleep_ms(1000);
 
@@ -93,10 +100,12 @@ void System::init()
 void System::run()
 {
     // 创建任务（在调度器启动前创建；任务体不会在 vTaskStartScheduler 前运行）
+    DEBUG_LOG("SYS", "creating tasks (keyboard prio4, system prio1)");
     xTaskCreate(&System::keyboard_task, "keyboard", 1024, nullptr, 4, nullptr);
     xTaskCreate(&System::system_task,   "system",   1024, nullptr, 1, nullptr);
 
     // 启动调度器：双核 SMP，永不返回（除非堆不足导致空闲任务创建失败）
+    DEBUG_LOG("SYS", "starting FreeRTOS SMP scheduler on %d cores", configNUMBER_OF_CORES);
     vTaskStartScheduler();
 
     // 调度器启动失败：报告并停机
@@ -109,12 +118,21 @@ void System::run()
 void System::keyboard_task(void* pv)
 {
     (void)pv;
+    DEBUG_LOG("SCAN", "keyboard task running on core %d", get_core_num());
     TickType_t last_wake = xTaskGetTickCount();
     while (true) {
         // 扫描 + 去抖 + TinyUSB/HID 上报 + 内部动作（与旧主循环同节奏：10ms）
         sys.scan.scan();
         sys.hid.task();
         sys.handle_reset_actions();
+
+        // 仅在有状态跳变时打印按键变化（按下/释放沿），避免 10ms 周期刷屏
+        if (sys.scan.basic_changed() || sys.scan.extended_changed() || sys.scan.internal_changed()) {
+            DEBUG_LOG("SCAN", "keys changed: basic=%u ext=%u internal=%u",
+                      (unsigned)sys.scan.pressed_basic().size(),
+                      (unsigned)sys.scan.pressed_extended().size(),
+                      (unsigned)sys.scan.pressed_internal().size());
+        }
 
         vTaskDelayUntil(&last_wake, pdMS_TO_TICKS(10));
     }
@@ -123,7 +141,7 @@ void System::keyboard_task(void* pv)
 void System::system_task(void* pv)
 {
     (void)pv;
-    std::string console_line;   // 控制台行缓冲（非阻塞读取）
+    DEBUG_LOG("SYS", "system task running on core %d", get_core_num());
     bool led_state = false;
     TickType_t last_wake = xTaskGetTickCount();
     while (true) {
@@ -131,18 +149,19 @@ void System::system_task(void* pv)
         gpio_put(PIN_LED_STATUS, led_state);
         led_state = !led_state;
 
-        // 非阻塞读取 UART 控制台输入
-        int c;
-        while ((c = getchar_timeout_us(0)) != PICO_ERROR_TIMEOUT) {
-            if (c == '\r' || c == '\n') {
-                if (!console_line.empty()) {
-                    std::cout << "Received: " << console_line << std::endl;
-                    console_line.clear();
-                }
-            } else if (c >= 32 && c < 127) {
-                console_line += (char)c;
-            }
-        }
+        // ---- 遗留的 UART echo 回显测试代码，已注释（保留以备日后参考） ----
+        // std::string console_line;   // 控制台行缓冲（非阻塞读取）
+        // int c;
+        // while ((c = getchar_timeout_us(0)) != PICO_ERROR_TIMEOUT) {
+        //     if (c == '\r' || c == '\n') {
+        //         if (!console_line.empty()) {
+        //             std::cout << "Received: " << console_line << std::endl;
+        //             console_line.clear();
+        //         }
+        //     } else if (c >= 32 && c < 127) {
+        //         console_line += (char)c;
+        //     }
+        // }
 
         vTaskDelayUntil(&last_wake, pdMS_TO_TICKS(10));
     }
@@ -167,8 +186,12 @@ void System::handle_reset_actions()
             continue; // 之前已按下，不是上升沿
         }
         switch (k) {
-            case KEY_P_USB_BURN: Reset(true);  break;   // 进引导
-            case KEY_P_REBOOT:   Reset(false); break;   // 软复位
+            case KEY_P_USB_BURN:
+                DEBUG_LOG("SYS", "reset action: USB_BURN -> UF2 bootloader");
+                Reset(true);  break;   // 进引导
+            case KEY_P_REBOOT:
+                DEBUG_LOG("SYS", "reset action: REBOOT -> soft reset");
+                Reset(false); break;   // 软复位
             default: break;
         }
     }

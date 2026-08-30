@@ -15,6 +15,7 @@
 #include "task.h"
 
 #include "mutex_wrap.h"
+#include "debug_log.h"
 
 static const int IO_TX_QUEUE_SIZE = 16;
 
@@ -72,6 +73,7 @@ static stdio_driver_t uart_dma_stdio = {
 /* UART TX 队列泵：FreeRTOS 任务，阻塞等待数据后逐字节发送。 */
 static void uart_tx_task(void* pv) {
     (void)pv;
+    DEBUG_LOG("UART", "uart_tx task started");
     for (;;) {
         // 阻塞等待有数据（生产者 push 后 xTaskNotifyGive）
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
@@ -108,6 +110,8 @@ void UartDMAStdio::init(int pin_tx, int pin_rx, int baud_rate, uart_inst_t *uart
     xTaskCreate(uart_tx_task, "uart_tx", 512, nullptr, 2, &uart_tx_handle);
     
     stdio_set_driver_enabled(&uart_dma_stdio, true);
+
+    DEBUG_LOG("UART", "DMA stdio init: tx=GP%d rx=GP%d baud=%d", pin_tx, pin_rx, baud_rate);
 }
 
 void UartDMAStdio::deinit() {

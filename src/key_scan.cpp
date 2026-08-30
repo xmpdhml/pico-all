@@ -1,5 +1,7 @@
 #include "key_scan.h"
 
+#include "debug_log.h"
+
 KeyScanner::KeyScanner(const KeyMatrix& matrix, MatrixIO& io)
     : matrix_(matrix), io_(io)
 {
@@ -8,6 +10,7 @@ KeyScanner::KeyScanner(const KeyMatrix& matrix, MatrixIO& io)
 
 void KeyScanner::init()
 {
+    DEBUG_LOG("SCAN", "key scanner init (%dx%d)", matrix_.rows(), matrix_.cols());
     io_.init();
 }
 

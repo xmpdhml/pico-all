@@ -22,6 +22,8 @@
 #include "key_codes.h"
 #include "key_scan.h"
 
+#include "debug_log.h"
+
 /* ==================================================================== */
 /* 构造                                                                  */
 /* ==================================================================== */
@@ -37,6 +39,7 @@ UsbHid::UsbHid(const KeyScanner& scan)
 
 void UsbHid::init() {
     tusb_init();
+    DEBUG_LOG("HID", "tusb init done");
 }
 
 void UsbHid::task() {
@@ -74,6 +77,7 @@ void UsbHid::set_nkro(bool enable) {
         return;
     }
     nkro_mode_ = enable;
+    DEBUG_LOG("HID", "NKRO mode -> %s", enable ? "on" : "off");
 
     // 模式变化：立即发空报告，让主机清掉旧模式下的按键状态
     if (enable) {

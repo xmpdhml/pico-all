@@ -3,6 +3,8 @@
 #include "hardware/gpio.h"
 #include "pico/stdlib.h"   // sleep_us
 
+#include "debug_log.h"
+
 GpioMatrixIO::GpioMatrixIO(const KeyMatrix& matrix)
     : matrix_(matrix)
 {
@@ -10,6 +12,9 @@ GpioMatrixIO::GpioMatrixIO(const KeyMatrix& matrix)
 
 void GpioMatrixIO::init()
 {
+    DEBUG_LOG("MATRIX", "gpio matrix io init: %dx%d (rows out, cols pull-up)",
+              matrix_.rows(), matrix_.cols());
+
     // 输出侧（行）：默认驱动到高电平（非激活）
     for (uint8_t r = 0; r < matrix_.rows(); r++) {
         gpio_init(matrix_.row_pin(r));

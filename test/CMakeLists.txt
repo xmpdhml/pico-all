@@ -21,3 +21,6 @@ target_include_directories(pico_all_tests PRIVATE
     ../include
     stubs
 )
+
+# 宿主机单测禁用调试日志（DEBUG_LOG 展开为空），避免刷屏
+target_compile_definitions(pico_all_tests PRIVATE DEBUG_LOG_ENABLE=0)
