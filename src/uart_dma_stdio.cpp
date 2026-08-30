@@ -20,13 +20,14 @@
 static const int IO_TX_QUEUE_SIZE = 16;
 
 static Mutex dma_tx_mutex;
-static std::deque<std::string> dma_tx_queue;   // 修复：不再预填 16 个空串
+static std::deque<std::string> dma_tx_queue;   // Fix: no longer pre-filled with 16 empty strings
 static TaskHandle_t uart_tx_handle = nullptr;
 
 static uart_inst_t* uart_instance = nullptr;
 
-/* stdio out_chars 回调：可从任意任务（及调度器启动前的 main）调用。
- * 队列满时仅让出 CPU；初始化阶段的打印远小于队列容量，不会触发。 */
+/* stdio out_chars callback: callable from any task (and from main before the
+ * scheduler starts). On a full queue it only yields the CPU; init-time prints
+ * are far below the queue capacity, so that path is never hit there. */
 static void uart_dma_write(const char *buf, int len) {
     std::string str(buf, len);
     for (;;) {
@@ -40,14 +41,14 @@ static void uart_dma_write(const char *buf, int len) {
         if (pushed) {
             break;
         }
-        // 队列满：调度器运行中才让出（vTaskDelay 启动前不可用）
+        // Queue full: only yield once the scheduler is running (vTaskDelay is unusable before startup)
         if (xTaskGetSchedulerState() == taskSCHEDULER_RUNNING) {
             vTaskDelay(1);
         } else {
             tight_loop_contents();
         }
     }
-    // 通知 TX 任务有数据待发送
+    // Notify the TX task that data is pending
     if (uart_tx_handle != nullptr) {
         xTaskNotifyGive(uart_tx_handle);
     }
@@ -70,15 +71,15 @@ static stdio_driver_t uart_dma_stdio = {
     .crlf_enabled = true
 };
 
-/* UART TX 队列泵：FreeRTOS 任务，阻塞等待数据后逐字节发送。 */
+/* UART TX queue pump: FreeRTOS task, blocks for data then sends byte-by-byte. */
 static void uart_tx_task(void* pv) {
     (void)pv;
     DEBUG_LOG("UART", "uart_tx task started");
     for (;;) {
-        // 阻塞等待有数据（生产者 push 后 xTaskNotifyGive）
+        // Block until data is available (producer calls xTaskNotifyGive after push)
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
-        // 排空队列
+        // Drain the queue
         for (;;) {
             std::string str;
             bool got = false;
@@ -106,7 +107,7 @@ void UartDMAStdio::init(int pin_tx, int pin_rx, int baud_rate, uart_inst_t *uart
     gpio_set_function(pin_tx, GPIO_FUNC_UART);
     gpio_set_function(pin_rx, GPIO_FUNC_UART);
     
-    // 创建 TX 泵任务（调度器启动前创建即可，启动后自动运行）
+    // Create the TX pump task (created before scheduler start; runs automatically after)
     xTaskCreate(uart_tx_task, "uart_tx", 512, nullptr, 2, &uart_tx_handle);
     
     stdio_set_driver_enabled(&uart_dma_stdio, true);

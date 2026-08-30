@@ -1,10 +1,11 @@
 /*
  * tusb_config.h
- * TinyUSB 配置：本项目仅启用 HID 设备类（键盘）。
+ * TinyUSB configuration: this project enables only the HID device class (keyboard).
  *
- * 注意：CFG_TUSB_MCU 由 Pico SDK 的 tinyusb 集成自动提供。RP2040 与 RP2350
- *       共用同一套 TinyUSB rp2040 驱动（OPT_MCU_RP2040），因此这里默认值对
- *       RP2350B 同样成立；用 #ifndef 保护以免重复定义。
+ * Note: CFG_TUSB_MCU is auto-provided by the Pico SDK's TinyUSB integration.
+ *       RP2040 and RP2350 share the same TinyUSB rp2040 driver (OPT_MCU_RP2040),
+ *       so the defaults below also hold for the RP2350B; guarded with #ifndef
+ *       to avoid redefinition.
  */
 
 #ifndef _TUSB_CONFIG_H_
@@ -14,22 +15,22 @@
 extern "C" {
 #endif
 
-/* ------------------- 板级/RHPort 配置 ------------------- */
+/* ------------------- Board / RHPort config ------------------- */
 #define CFG_TUSB_RHPORT0_MODE   (OPT_MODE_DEVICE)
 
 #ifndef CFG_TUSB_MCU
 #define CFG_TUSB_MCU            OPT_MCU_RP2040
 #endif
 
-/* ------------------- 通用配置 ------------------- */
+/* ------------------- Common config ------------------- */
 #ifndef CFG_TUSB_OS
-#define CFG_TUSB_OS             OPT_OS_NONE   /* 无 RTOS，裸机轮询 */
+#define CFG_TUSB_OS             OPT_OS_NONE   /* No RTOS, bare-metal polling */
 #endif
 #define CFG_TUSB_DEBUG          0
 
 #define CFG_TUD_ENABLED         1
 
-/* 传输缓冲区内存属性（RP2040/RP2350 由 SDK 处理，留空即可） */
+/* Transfer buffer memory attributes (handled by SDK on RP2040/RP2350; leave empty) */
 #ifndef CFG_TUSB_MEM_SECTION
 #define CFG_TUSB_MEM_SECTION
 #endif
@@ -37,14 +38,14 @@ extern "C" {
 #define CFG_TUSB_MEM_ALIGN      __attribute__((aligned(4)))
 #endif
 
-/* ------------------- 设备类驱动开关 ------------------- */
+/* ------------------- Device class driver switches ------------------- */
 #define CFG_TUD_CDC             0
 #define CFG_TUD_MSC             0
-#define CFG_TUD_HID             1   /* 启用 HID 键盘 */
+#define CFG_TUD_HID             1   /* Enable HID keyboard */
 #define CFG_TUD_MIDI            0
 #define CFG_TUD_VENDOR          0
 
-/* HID 端点传输缓冲区大小 */
+/* HID endpoint transfer buffer size */
 #ifndef CFG_TUD_HID_EP_BUFSIZE
 #define CFG_TUD_HID_EP_BUFSIZE  64
 #endif

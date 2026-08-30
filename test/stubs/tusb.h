@@ -1,8 +1,8 @@
 /*
- * tusb.h —— 宿主机单元测试用的 TinyUSB 最小化替身。
+ * tusb.h — minimal TinyUSB stand-in for host unit tests.
  *
- * 只提供 usb_hid 编译/链接所需的类型与函数声明，
- * 具体"发送记录"在 tusb_stub.cpp 中实现（测试观察点）。
+ * Provides only the types and function declarations needed to compile/link
+ * usb_hid; the actual "send recording" lives in tusb_stub.cpp (test observer).
  */
 #ifndef TUSB_H
 #define TUSB_H
@@ -15,7 +15,7 @@
 extern "C" {
 #endif
 
-/* ---- 最小化类型 ---- */
+/* ---- Minimal types ---- */
 typedef struct {
     uint8_t  bLength;
     uint8_t  bDescriptorType;
@@ -46,7 +46,7 @@ typedef enum {
     HID_REPORT_TYPE_FEATURE,
 } hid_report_type_t;
 
-/* ---- 设备 / HID API（stub） ---- */
+/* ---- Device / HID API (stub) ---- */
 void tusb_init(void);
 void tud_task(void);
 bool tud_hid_ready(void);

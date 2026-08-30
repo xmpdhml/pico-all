@@ -1,4 +1,4 @@
-#define private public   // 测试需要访问私有构造与报告编码方法
+#define private public   // Tests need access to the private constructor and report-encoding methods
 #include "key_scan.h"
 #include "usb_hid.h"
 #undef private
@@ -43,7 +43,7 @@ const KeyMatrix::Config kCfg = {
     .direction  = KeyMatrix::Direction::RowToCol,
 };
 
-// 组装一套可测试的 UsbHid（KeyMatrix + SimMatrixIO + KeyScanner + UsbHid）
+// Assemble a testable UsbHid (KeyMatrix + SimMatrixIO + KeyScanner + UsbHid)
 struct Fixture {
     KeyMatrix   matrix;
     SimMatrixIO io;
@@ -85,8 +85,8 @@ UT_CASE(key_to_usage_app) {
 UT_CASE(key_to_usage_non_extended) {
     Fixture f;
     uint16_t u = 0;
-    CHECK(!f.hid.key_to_usage(KEY_A, u));                // 普通键不是 usage
-    CHECK(!f.hid.key_to_usage(KEY_P_NKRO_ON_OFF, u));    // 私有键不是 usage
+    CHECK(!f.hid.key_to_usage(KEY_A, u));                // Regular key is not a usage
+    CHECK(!f.hid.key_to_usage(KEY_P_NKRO_ON_OFF, u));    // Private key is not a usage
 }
 
 UT_CASE(build_report_6kro) {
@@ -106,8 +106,8 @@ UT_CASE(build_report_nkro) {
     uint8_t out[2 + NKRO_BITMAP_SIZE] = {0};
     f.hid.build_report_nkro(pressed, out);
     CHECK(out[2] & (uint8_t)(1u << (KEY_A & 7)));   // KEY_A=4 → bit4
-    CHECK_EQ(out[0], 0u);                            // 无修饰键
-    CHECK_EQ(out[1], 0u);                            // 保留字节
+    CHECK_EQ(out[0], 0u);                            // No modifier
+    CHECK_EQ(out[1], 0u);                            // Reserved byte
 }
 
 UT_CASE(build_report_consumer) {
@@ -148,7 +148,7 @@ UT_CASE(nkro_mode_switch) {
 UT_CASE(task_sends_6kro_report) {
     tusb_stub_reset();
     Fixture f;
-    f.io.set(0, 0, true);                 // KEY_A 按下
+    f.io.set(0, 0, true);                 // KEY_A pressed
     for (int i = 0; i < 5; i++) f.scan.scan();
     f.hid.task();
     CHECK_EQ(g_last_report_id, REPORT_ID_KEYBOARD);

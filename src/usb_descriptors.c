@@ -1,8 +1,8 @@
 /*
  * usb_descriptors.c
- * RP2350B USB HID 键盘的 TinyUSB 描述符定义（6KRO + NKRO 双报告）。
+ * TinyUSB descriptors for the RP2350B USB HID keyboard (dual report: 6KRO + NKRO).
  *
- * 参考：Pico SDK 示例 / lib/tinyusb/examples/device/hid_composite
+ * Reference: Pico SDK examples / lib/tinyusb/examples/device/hid_composite
  */
 
 #include <string.h>
@@ -34,18 +34,18 @@ tusb_desc_device_t const desc_device = {
 };
 
 /* ------------------------------------------------------------------ */
-/* HID Report Descriptor（6KRO + NKRO 双报告）                          */
-/*   Report ID 1 = 6KRO：Boot 键盘格式（修饰键 + 6 键 + LED 输出）       */
-/*   Report ID 2 = NKRO：256 键位图（修饰键 + 保留 + 32 字节位图）       */
-/* 固件按当前模式只发送其中一个报告（见 usb_hid.cpp 的 nkro_mode）。     */
+/* HID Report Descriptor (dual report: 6KRO + NKRO)                    */
+/*   Report ID 1 = 6KRO: Boot keyboard format (modifier + 6 keys + LED output) */
+/*   Report ID 2 = NKRO: 256-key bitmap (modifier + reserved + 32-byte bitmap) */
+/* The firmware sends only one of them per current mode (see nkro_mode in usb_hid.cpp). */
 /* ------------------------------------------------------------------ */
 uint8_t const desc_hid_report[] = {
-    /* ================= 6KRO（Boot 键盘格式） ================= */
+    /* ================= 6KRO (Boot keyboard format) ================= */
     HID_USAGE_PAGE ( HID_USAGE_PAGE_DESKTOP ),
     HID_USAGE      ( HID_USAGE_DESKTOP_KEYBOARD ),
     HID_COLLECTION ( HID_COLLECTION_APPLICATION ),
       HID_REPORT_ID ( REPORT_ID_KEYBOARD )
-      /* 8 位修饰键（Ctrl/Shift/Alt/Gui） */
+      /* 8 modifier bits (Ctrl/Shift/Alt/Gui) */
       HID_USAGE_PAGE ( HID_USAGE_PAGE_KEYBOARD ),
         HID_USAGE_MIN    ( 224 ),
         HID_USAGE_MAX    ( 231 ),
@@ -54,11 +54,11 @@ uint8_t const desc_hid_report[] = {
         HID_REPORT_COUNT ( 8 ),
         HID_REPORT_SIZE  ( 1 ),
         HID_INPUT        ( HID_DATA | HID_VARIABLE | HID_ABSOLUTE ),
-        /* 8 位保留 */
+        /* 8 reserved bits */
         HID_REPORT_COUNT ( 1 ),
         HID_REPORT_SIZE  ( 8 ),
         HID_INPUT        ( HID_CONSTANT ),
-      /* 输出 5 位 LED（Num/Caps/Scroll/Kana/Compose） */
+      /* 5-bit LED output (Num/Caps/Scroll/Kana/Compose) */
       HID_USAGE_PAGE ( HID_USAGE_PAGE_LED ),
         HID_USAGE_MIN    ( 1 ),
         HID_USAGE_MAX    ( 5 ),
@@ -68,7 +68,7 @@ uint8_t const desc_hid_report[] = {
         HID_REPORT_COUNT ( 1 ),
         HID_REPORT_SIZE  ( 3 ),
         HID_OUTPUT       ( HID_CONSTANT ),
-      /* 6 字节键码 */
+      /* 6-byte keycode array */
       HID_USAGE_PAGE ( HID_USAGE_PAGE_KEYBOARD ),
         HID_USAGE_MIN    ( 0 ),
         HID_USAGE_MAX_N  ( 255, 2 ),
@@ -79,7 +79,7 @@ uint8_t const desc_hid_report[] = {
         HID_INPUT        ( HID_DATA | HID_ARRAY | HID_ABSOLUTE ),
     HID_COLLECTION_END,
 
-    /* ================= NKRO（256 键位图） ================= */
+    /* ================= NKRO (256-key bitmap) ================= */
     HID_USAGE_PAGE ( HID_USAGE_PAGE_DESKTOP ),
     HID_USAGE      ( HID_USAGE_DESKTOP_KEYBOARD ),
     HID_COLLECTION ( HID_COLLECTION_APPLICATION ),
@@ -95,7 +95,7 @@ uint8_t const desc_hid_report[] = {
         HID_REPORT_COUNT ( 1 ),
         HID_REPORT_SIZE  ( 8 ),
         HID_INPUT        ( HID_CONSTANT ),
-        /* 256 位键码位图（32 字节） */
+        /* 256-bit keycode bitmap (32 bytes) */
         HID_USAGE_MIN    ( 0 ),
         HID_USAGE_MAX_N  ( 255, 2 ),
         HID_LOGICAL_MIN  ( 0 ),
@@ -105,12 +105,12 @@ uint8_t const desc_hid_report[] = {
         HID_INPUT        ( HID_DATA | HID_VARIABLE | HID_ABSOLUTE ),
     HID_COLLECTION_END,
 
-    /* ============ Consumer / 媒体控制（位图，多键同报） ============ */
+    /* ============ Consumer / media control (bitmap, multi-key per report) ============ */
     HID_USAGE_PAGE ( HID_USAGE_PAGE_CONSUMER ),
     HID_USAGE      ( HID_USAGE_CONSUMER_CONTROL ),
     HID_COLLECTION ( HID_COLLECTION_APPLICATION ),
       HID_REPORT_ID ( REPORT_ID_CONSUMER )
-      /* 64 位位图：bit N = usage (CONSUMER_USAGE_MIN + N)，1 bit/键 */
+      /* 64-bit bitmap: bit N = usage (CONSUMER_USAGE_MIN + N), 1 bit per key */
       HID_LOGICAL_MIN ( 0 ),
       HID_LOGICAL_MAX ( 1 ),
       HID_USAGE_MIN   ( CONSUMER_USAGE_MIN ),
@@ -120,12 +120,12 @@ uint8_t const desc_hid_report[] = {
       HID_INPUT       ( HID_DATA | HID_VARIABLE | HID_ABSOLUTE ),
     HID_COLLECTION_END,
 
-    /* ============ Consumer / 系统键 Power/Reset/Sleep（位图） ============ */
+    /* ============ Consumer / system keys Power/Reset/Sleep (bitmap) ============ */
     HID_USAGE_PAGE ( HID_USAGE_PAGE_CONSUMER ),
     HID_USAGE      ( HID_USAGE_CONSUMER_CONTROL ),
     HID_COLLECTION ( HID_COLLECTION_APPLICATION ),
       HID_REPORT_ID ( REPORT_ID_CONSUMER_SYS )
-      /* 3 位位图：bit N = usage (CONSUMER_SYS_USAGE_MIN + N) */
+      /* 3-bit bitmap: bit N = usage (CONSUMER_SYS_USAGE_MIN + N) */
       HID_LOGICAL_MIN ( 0 ),
       HID_LOGICAL_MAX ( 1 ),
       HID_USAGE_MIN   ( CONSUMER_SYS_USAGE_MIN ),
@@ -135,12 +135,12 @@ uint8_t const desc_hid_report[] = {
       HID_INPUT       ( HID_DATA | HID_VARIABLE | HID_ABSOLUTE ),
     HID_COLLECTION_END,
 
-    /* ============ Consumer / 应用启动 AL_*（位图） ============ */
+    /* ============ Consumer / application launch AL_* (bitmap) ============ */
     HID_USAGE_PAGE ( HID_USAGE_PAGE_CONSUMER ),
     HID_USAGE      ( HID_USAGE_CONSUMER_CONTROL ),
     HID_COLLECTION ( HID_COLLECTION_APPLICATION ),
       HID_REPORT_ID ( REPORT_ID_CONSUMER_APP )
-      /* 67 位位图：bit N = usage (CONSUMER_APP_USAGE_MIN + N)（usage>255 用 2 字节） */
+      /* 67-bit bitmap: bit N = usage (CONSUMER_APP_USAGE_MIN + N) (2-byte for usage > 255) */
       HID_LOGICAL_MIN ( 0 ),
       HID_LOGICAL_MAX ( 1 ),
       HID_USAGE_MIN_N ( CONSUMER_APP_USAGE_MIN, 2 ),
@@ -162,7 +162,7 @@ char const *string_desc_arr[] = {
 };
 
 /* ------------------------------------------------------------------ */
-/* Configuration Descriptor（由 TinyUSB 的 TUD_CONFIG_DESCRIPTOR 宏组合）*/
+/* Configuration Descriptor (assembled by TinyUSB's TUD_CONFIG_DESCRIPTOR macro) */
 /* ------------------------------------------------------------------ */
 uint8_t const desc_configuration[] = {
     // Config number, interface count, string index, total length, attribute, power
@@ -173,13 +173,13 @@ uint8_t const desc_configuration[] = {
 };
 
 /* ------------------------------------------------------------------ */
-/* 回调：根据配置/字符串索引返回对应描述符                              */
+/* Callbacks: return the descriptor matching a config/string index     */
 /* ------------------------------------------------------------------ */
 uint8_t const *tud_descriptor_device_cb(void) {
     return (uint8_t const *)&desc_device;
 }
 
-/* 返回 HID 报告描述符（TinyUSB 必须的回调） */
+/* Return the HID report descriptor (required by TinyUSB) */
 uint8_t const *tud_hid_descriptor_report_cb(uint8_t itf) {
     (void)itf;
     return desc_hid_report;

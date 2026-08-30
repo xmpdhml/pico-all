@@ -3,12 +3,13 @@
 #include "matrix_io.h"
 #include "key_matrix.h"
 
-/* GpioMatrixIO：真实 GPIO 实现（只支持 pullup 方案）。
- * 行输出、列输入上拉；激活行拉低，按下时列读到 0。 */
+/* GpioMatrixIO: real GPIO implementation (pull-up scheme only).
+ * Rows are outputs, columns are inputs with pull-up; the active row is driven
+ * low, and a pressed key reads 0 on the column. */
 
 class GpioMatrixIO : public MatrixIO
 {
-    friend class System;   // 仅 System 可创建（参照 UartDMAStdio 模式）
+    friend class System;   // Only System can create it (same pattern as UartDMAStdio)
 
 public:
     void init() override;

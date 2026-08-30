@@ -1,4 +1,4 @@
-#define private public   // 测试需要访问私有构造
+#define private public   // Tests need access to the private constructor
 #include "key_matrix.h"
 #undef private
 

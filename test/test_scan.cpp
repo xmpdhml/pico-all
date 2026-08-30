@@ -1,5 +1,5 @@
-#define private public   // 测试需要访问私有构造
-#include "key_scan.h"    // 连带 key_matrix.h / matrix_io.h
+#define private public   // Tests need access to the private constructor
+#include "key_scan.h"    // Pulls in key_matrix.h / matrix_io.h
 #undef private
 
 #include "harness.h"
@@ -8,7 +8,7 @@
 
 namespace {
 
-// 模拟矩阵：可编程设置每个格的"按下/释放"
+// Simulated matrix: each cell's "pressed/released" state is programmable
 class SimMatrixIO : public MatrixIO {
 public:
     SimMatrixIO(const KeyMatrix& m)
@@ -26,7 +26,7 @@ private:
     std::vector<bool> cells_;
 };
 
-// 3×3：basic / extended / internal / modifier / null 混排
+// 3×3: basic / extended / internal / modifier / null mixed
 const uint8_t kRowsP[] = { 1, 2, 3 };
 const uint8_t kColsP[] = { 4, 5, 6 };
 const KeyCodes kMap[3][3] = {
@@ -56,8 +56,8 @@ UT_CASE(scan_nothing_pressed) {
     CHECK(!ks.basic_changed());
 }
 
-// 记录当前去抖语义（计数阈值 4，需 5 次扫描才上报按下）。
-// TODO: 切换到 QMK eager/defer 后，本用例改为"按下立即上报、释放延迟"。
+// Records the current debounce semantics (counting threshold 4, needs 5 scans before reporting a press).
+// TODO: after switching to QMK eager/defer, change this case to "report on press immediately, delay on release".
 UT_CASE(scan_press_requires_debounce) {
     KeyMatrix m(kCfg);
     SimMatrixIO io(m);
@@ -67,7 +67,7 @@ UT_CASE(scan_press_requires_debounce) {
         ks.scan();
         CHECK(ks.pressed_basic().empty());
     }
-    ks.scan();   // 第 5 次 → 上报
+    ks.scan();   // 5th scan → reported
     CHECK_EQ((int)ks.pressed_basic().size(), 1);
     CHECK_EQ(ks.pressed_basic()[0], KEY_A);
     CHECK(ks.basic_changed());
@@ -79,7 +79,7 @@ UT_CASE(scan_classify_ranges) {
     KeyScanner ks(m, io);
     io.set(0, 1, true);   // KEY_E_VOL_INC → extended
     io.set(0, 2, true);   // KEY_P_NKRO_ON_OFF → internal
-    io.set(1, 0, true);   // KEY_LEFT_CTRL → basic（修饰键）
+    io.set(1, 0, true);   // KEY_LEFT_CTRL → basic (modifier)
     for (int i = 0; i < 5; i++) ks.scan();
     CHECK_EQ((int)ks.pressed_basic().size(), 1);
     CHECK_EQ(ks.pressed_basic()[0], KEY_LEFT_CTRL);
@@ -104,15 +104,15 @@ UT_CASE(scan_release_after_hold) {
     KeyMatrix m(kCfg);
     SimMatrixIO io(m);
     KeyScanner ks(m, io);
-    io.set(0, 0, true);            // KEY_A 按住
-    for (int i = 0; i < 8; i++) ks.scan();   // 计数封顶 8
+    io.set(0, 0, true);            // KEY_A held
+    for (int i = 0; i < 8; i++) ks.scan();   // Counter saturates at 8
     CHECK_EQ((int)ks.pressed_basic().size(), 1);
-    io.set(0, 0, false);           // 释放
-    for (int i = 0; i < 3; i++) {  // 计数 8→7→6→5 仍为按下
+    io.set(0, 0, false);           // Release
+    for (int i = 0; i < 3; i++) {  // Counter 8→7→6→5 still pressed
         ks.scan();
         CHECK_EQ((int)ks.pressed_basic().size(), 1);
     }
-    ks.scan();                     // 计数 5→4 → 消失
+    ks.scan();                     // Counter 5→4 → disappears
     CHECK(ks.pressed_basic().empty());
     CHECK(ks.basic_changed());
 }

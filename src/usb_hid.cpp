@@ -1,15 +1,15 @@
 /*
  * usb_hid.cpp
- * USB HID 键盘子系统（UsbHid）：TinyUSB 初始化、后台任务、报告编码与
- * 6KRO/NKRO 模式切换。
+ * USB HID keyboard subsystem (UsbHid): TinyUSB init, background task, report
+ * encoding and 6KRO/NKRO mode switching.
  *
- * 职责边界：
- *  - KeyScanner 只产出原始 KeyCodes（pressed_basic/extended/internal），
- *    不关心报告格式；
- *  - 本类独占所有报告编码、模式状态与切换；
- *  - 模式切换内部动作（KEY_P_NKRO_ON_OFF / KEY_P_NKRO / KEY_P_6KRO）
- *    在 task() 内部消费扫描结果完成。
- *  - 由 System 单例持有（sys.hid），见 system.h/system.cpp。
+ * Responsibility boundary:
+ *  - KeyScanner only produces raw KeyCodes (pressed_basic/extended/internal)
+ *    and knows nothing about report formats;
+ *  - this class exclusively owns all report encoding, mode state and switching;
+ *  - mode-switch internal actions (KEY_P_NKRO_ON_OFF / KEY_P_NKRO / KEY_P_6KRO)
+ *    are consumed inside task().
+ *  - Held by the System singleton (sys.hid), see system.h/system.cpp.
  */
 
 #include "usb_hid.h"
@@ -25,7 +25,7 @@
 #include "debug_log.h"
 
 /* ==================================================================== */
-/* 构造                                                                  */
+/* Construction                                                         */
 /* ==================================================================== */
 
 UsbHid::UsbHid(const KeyScanner& scan)
@@ -34,7 +34,7 @@ UsbHid::UsbHid(const KeyScanner& scan)
 }
 
 /* ==================================================================== */
-/* 公开接口                                                              */
+/* Public interface                                                     */
 /* ==================================================================== */
 
 void UsbHid::init() {
@@ -43,7 +43,7 @@ void UsbHid::init() {
 }
 
 void UsbHid::task() {
-    tud_task(); // TinyUSB 后台任务（枚举/中断）
+    tud_task(); // TinyUSB background task (enumeration / interrupts)
 
     if (!tud_hid_ready()) {
         return;
@@ -52,7 +52,8 @@ void UsbHid::task() {
     handle_internal_actions();
 
 #ifdef USB_HID_SIM_KEYS
-    // 无矩阵时验证 HID 上报链路的模拟按键：周期性按下/释放 'A'
+    // Simulated keys to validate the HID report path without a matrix:
+    // periodically press/release 'A'
     static uint32_t tick = 0;
     if (((tick++) & 0x3F) < 32) {
         static const std::vector<KeyCodes> sim{ KEY_A };
@@ -61,10 +62,10 @@ void UsbHid::task() {
         send_reports({});
     }
 #else
-    send_reports(scan_.pressed_basic());            // 6KRO / NKRO 键盘
-    send_consumer_report(scan_.pressed_extended()); // Consumer 媒体（位图）
-    send_report_system(scan_.pressed_extended());   // Consumer 系统键（位图）
-    send_report_app(scan_.pressed_extended());      // Consumer 应用启动（位图）
+    send_reports(scan_.pressed_basic());            // 6KRO / NKRO keyboard
+    send_consumer_report(scan_.pressed_extended()); // Consumer media (bitmap)
+    send_report_system(scan_.pressed_extended());   // Consumer system keys (bitmap)
+    send_report_app(scan_.pressed_extended());      // Consumer app launch (bitmap)
 #endif
 }
 
@@ -79,7 +80,8 @@ void UsbHid::set_nkro(bool enable) {
     nkro_mode_ = enable;
     DEBUG_LOG("HID", "NKRO mode -> %s", enable ? "on" : "off");
 
-    // 模式变化：立即发空报告，让主机清掉旧模式下的按键状态
+    // Mode change: send an empty report immediately so the host clears keys
+    // left in the old mode
     if (enable) {
         uint8_t empty[2 + NKRO_BITMAP_SIZE] = {0};
         tud_hid_report(REPORT_ID_NKRO, empty, sizeof(empty));
@@ -94,27 +96,27 @@ void UsbHid::toggle_nkro() {
 }
 
 /* ==================================================================== */
-/* 内部动作：KEY_P_* 私有键的按下沿处理（模式切换）                       */
+/* Internal actions: press-edge handling of KEY_P_* private keys (mode switch) */
 /* ==================================================================== */
 
 void UsbHid::handle_internal_actions() {
     for (KeyCodes k : scan_.pressed_internal()) {
         if (std::find(prev_internal_.begin(), prev_internal_.end(), k)
                 != prev_internal_.end()) {
-            continue; // 之前已按下，不是上升沿
+            continue; // Already pressed, not a rising edge
         }
         switch (k) {
             case KEY_P_NKRO_ON_OFF: toggle_nkro(); break;
             case KEY_P_NKRO:        set_nkro(true);  break;
             case KEY_P_6KRO:        set_nkro(false); break;
-            default: break; // 其他私有动作暂未实现
+            default: break; // Other private actions not yet implemented
         }
     }
     prev_internal_ = scan_.pressed_internal();
 }
 
 /* ==================================================================== */
-/* 报告编码（key_scan 产出的是原始 KeyCodes，这里才编码为 HID 报告）       */
+/* Report encoding (key_scan produces raw KeyCodes; encoded to HID here) */
 /* ==================================================================== */
 
 void UsbHid::build_report_6kro(const std::vector<KeyCodes>& pressed,
@@ -123,13 +125,13 @@ void UsbHid::build_report_6kro(const std::vector<KeyCodes>& pressed,
     uint8_t idx = 0;
     for (KeyCodes k : pressed) {
         if (k >= KEY_LEFT_CTRL && k <= KEY_RIGHT_GUI) {
-            // 修饰键（0xE0~0xE7）→ modifier 字节
+            // Modifier keys (0xE0~0xE7) → modifier byte
             out.modifier |= (uint8_t)(1u << (k - KEY_LEFT_CTRL));
         } else if (k > KEY_NULL && k <= KEY_RIGHT_GUI) {
-            // 普通键：最多 6 个（超出丢弃，这是 6KRO 的语义）
+            // Regular keys: at most 6 (extras are dropped — the 6KRO semantics)
             if (idx < 6) out.keycode[idx++] = (uint8_t)k;
         }
-        // 扩展（KEY_E_*）/私有（KEY_P_*）不在此处理
+        // Extended (KEY_E_*) / private (KEY_P_*) are not handled here
     }
 }
 
@@ -147,11 +149,11 @@ void UsbHid::build_report_nkro(const std::vector<KeyCodes>& pressed,
 
 bool UsbHid::key_to_usage(KeyCodes key, uint16_t& usage) {
     switch (key) {
-        // 系统键（0x30~0x32）
+        // System keys (0x30~0x32)
         case KEY_E_POWER: usage = 0x0030; return true;
         case KEY_E_RESET: usage = 0x0031; return true;
         case KEY_E_SLEEP: usage = 0x0032; return true;
-        // 媒体（0xB0~0xEF）
+        // Media (0xB0~0xEF)
         case KEY_E_PLAY_PAUSE: usage = 0x00CD; return true;
         case KEY_E_STOP:       usage = 0x00B7; return true;
         case KEY_E_NEXT_TRACK: usage = 0x00B5; return true;
@@ -161,8 +163,9 @@ bool UsbHid::key_to_usage(KeyCodes key, uint16_t& usage) {
         case KEY_E_VOL_DEC:    usage = 0x00EA; return true;
         default: break;
     }
-    // 应用启动 AL_*：枚举顺序即 usage 顺序（自 0x184 起偏移），覆盖全部
-    // KEY_E_AL_*；个别键若需精确 usage，可在上面补显式 case。
+    // Application launch AL_*: enum order equals usage order (offset from
+    // 0x184), covering all KEY_E_AL_*; add explicit cases above if a specific
+    // key needs an exact usage.
     if (key >= KEY_E_AL_WORD && key <= KEY_E_AL_AUDIO_PLAYER) {
         usage = (uint16_t)(CONSUMER_APP_USAGE_MIN + (key - KEY_E_AL_WORD));
         return true;
@@ -207,7 +210,7 @@ void UsbHid::build_report_app(const std::vector<KeyCodes>& pressed,
 }
 
 /* ==================================================================== */
-/* 上报（仅在变化时发送；模式切换后强制重发）                              */
+/* Sending (only on change; forced resend after a mode switch)           */
 /* ==================================================================== */
 
 void UsbHid::send_reports(const std::vector<KeyCodes>& pressed) {
@@ -264,7 +267,7 @@ void UsbHid::send_report_app(const std::vector<KeyCodes>& pressed) {
 }
 
 /* ==================================================================== */
-/* TinyUSB 回调（弱符号覆盖，需 extern "C" 与头文件声明保持一致）          */
+/* TinyUSB callbacks (weak-symbol overrides; extern "C" to match headers) */
 /* ==================================================================== */
 extern "C" {
 
@@ -279,7 +282,7 @@ void tud_hid_set_report_cb(uint8_t itf, uint8_t report_id,
                            hid_report_type_t report_type,
                            uint8_t const *buffer, uint16_t bufsize) {
     (void)itf; (void)report_id; (void)report_type; (void)buffer; (void)bufsize;
-    // TODO: 可在收到 OUTPUT 报告时驱动 Num/Caps/Scroll 指示灯
+    // TODO: drive Num/Caps/Scroll LEDs when an OUTPUT report is received
 }
 
 } // extern "C"

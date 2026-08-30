@@ -2,8 +2,8 @@
 
 #include <stdint.h>
 
-/* 测试观察点：记录最近一次通过 tud_hid_report / tud_hid_keyboard_report
- * 发送的报告内容，供测试断言。 */
+/* Test observer: records the latest report sent via tud_hid_report /
+ * tud_hid_keyboard_report for test assertions. */
 
 extern uint8_t  g_last_report_id;
 extern uint8_t  g_last_report[64];

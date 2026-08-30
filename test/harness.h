@@ -4,11 +4,11 @@
 #include <vector>
 #include <string>
 
-/* 极简单元测试框架（零依赖，宿主 g++ 直接编译）。
+/* Minimal unit-test framework (zero dependencies, compiled directly by host g++).
  *
- * 用法：
+ * Usage:
  *   #include "harness.h"
- *   UT_CASE(名字) { CHECK(...); CHECK_EQ(a, b); }
+ *   UT_CASE(name) { CHECK(...); CHECK_EQ(a, b); }
  */
 
 namespace ut {
@@ -30,7 +30,7 @@ struct Registrar {
 inline int& g_checks() { static int c = 0; return c; }
 inline int& g_fails()  { static int f = 0; return f; }
 
-int run_all();   // 实现在 test_main.cpp
+int run_all();   // Implemented in test_main.cpp
 
 } // namespace ut
 

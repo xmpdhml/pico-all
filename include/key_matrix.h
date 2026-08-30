@@ -4,22 +4,24 @@
 
 #include "key_codes.h"
 
-/* KeyMatrix：键盘矩阵的静态描述（行列数、引脚、键码表、扫描方向）。
+/* KeyMatrix: static description of the key matrix (rows/cols, pins, keymap, direction).
  *
- * 只描述"接线"，不触碰硬件；GPIO 扫描与去抖由 KeyScanner 完成。
- * 数据在构造时注入、运行时只读；具体布局（键位表）在 system.cpp 定义。
- * 输入侧固定使用上拉（pullup）：激活行拉低、按下读 0（KeyScanner 假定）。
+ * Describes only the "wiring", touches no hardware; GPIO scanning and debounce
+ * are done by KeyScanner. Data is injected at construction and read-only at
+ * runtime; the concrete layout (keymap) is defined in keyboard_config.h.
+ * Inputs always use pull-up: active row is driven low, a pressed key reads 0
+ * (assumed by KeyScanner).
  */
 
 class KeyMatrix
 {
-    friend class System;   // 仅 System 可创建（参照 UartDMAStdio 模式）
+    friend class System;   // Only System can create it (same pattern as UartDMAStdio)
 
 public:
     enum class Direction : uint8_t
     {
-        RowToCol = 0,   // 行输出、列输入（默认）
-        ColToRow = 1,   // 列输出、行输入
+        RowToCol = 0,   // Rows output, columns input (default)
+        ColToRow = 1,   // Columns output, rows input
     };
 
     struct Config
@@ -28,8 +30,8 @@ public:
         uint8_t cols = 0;
         const uint8_t* row_pins = nullptr;   // [rows]
         const uint8_t* col_pins = nullptr;   // [cols]
-        const KeyCodes* keymap = nullptr;    // [rows][cols] 行主序：key_at(r,c)
-        Direction direction = Direction::RowToCol;   // 输出侧
+        const KeyCodes* keymap = nullptr;    // [rows][cols] row-major: key_at(r,c)
+        Direction direction = Direction::RowToCol;   // Output side
     };
 
     uint8_t rows() const { return rows_; }

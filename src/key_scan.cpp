@@ -25,7 +25,8 @@ void KeyScanner::scan()
             const bool raw = io_.read_cell(r, c);
             const size_t idx = (size_t)r * matrix_.cols() + c;
 
-            // 每键计数去抖：连续按下/释放超过阈值才算稳定
+            // Per-key counting debounce: a state is stable only after exceeding
+            // the threshold in consecutive scans
             uint8_t& cnt = debounce_[idx];
             if (raw) {
                 if (cnt < 2 * kDebounceThreshold) cnt++;
@@ -39,7 +40,7 @@ void KeyScanner::scan()
         }
     }
 
-    // 变化标志
+    // Change flags
     basic_changed_ = (pressed_basic_ != last_basic_);
     extended_changed_ = (pressed_extended_ != last_extended_);
     internal_changed_ = (pressed_internal_ != last_internal_);

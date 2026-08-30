@@ -18,9 +18,9 @@ public:
     KeyScanner& scan;
     UsbHid& hid;
 
-    void init();   // 一次性初始化：UART stdio / USB HID / 矩阵 / LED
-    void run();    // 创建 FreeRTOS 任务并启动调度器，永不返回
-    void Reset(bool to_bootloader = true);   // true=进 UF2 引导, false=软复位
+    void init();   // One-time init: UART stdio / USB HID / matrix / LED
+    void run();    // Create FreeRTOS tasks and start the scheduler; never returns
+    void Reset(bool to_bootloader = true);   // true=enter UF2 bootloader, false=soft reset
 
 private:
     System();
@@ -30,18 +30,19 @@ private:
     System(System&&) = delete;
     System& operator=(System&&) = delete;
 
-    void handle_reset_actions();   // 消费 KEY_P_USB_BURN / KEY_P_REBOOT（按下沿）
+    void handle_reset_actions();   // Consume KEY_P_USB_BURN / KEY_P_REBOOT (press edge)
 
-    // FreeRTOS 任务体（静态成员函数：xTaskCreate 需要 C 函数指针，且可访问私有成员）
-    static void keyboard_task(void* pv);   // 10ms：扫描 + HID 上报 + 内部动作
-    static void system_task(void* pv);     // 10ms：LED 心跳 + 控制台输入
+    // FreeRTOS task bodies (static members: xTaskCreate needs a C function
+    // pointer, and these need access to private members)
+    static void keyboard_task(void* pv);   // 10ms: scan + HID report + internal actions
+    static void system_task(void* pv);     // 10ms: LED heartbeat + console input
 
     UartDMAStdio io_instance;
     KeyMatrix matrix_instance;
     GpioMatrixIO matrix_io_instance;
     KeyScanner scan_instance;
     UsbHid hid_instance;
-    std::vector<KeyCodes> prev_internal_;   // 复位键按下沿检测
+    std::vector<KeyCodes> prev_internal_;   // Reset-key press-edge detection
 };
 
 extern System& sys;

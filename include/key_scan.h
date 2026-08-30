@@ -5,29 +5,33 @@
 #include "key_matrix.h"
 #include "matrix_io.h"
 
-/* KeyScanner：矩阵扫描 + 去抖引擎。
+/* KeyScanner: matrix scan + debounce engine.
  *
- * - init()：初始化矩阵（转发给 MatrixIO）；
- * - scan()：逐格读取 + 每键计数去抖，产出三类按键列表
- *   （basic/extended/internal）及其变化标志，每轮主循环调用一次。
+ * - init(): initialize the matrix (forwarded to MatrixIO);
+ * - scan(): read every cell + per-key counting debounce, producing three key
+ *   lists (basic/extended/internal) and their change flags; called once per
+ *   main-loop iteration.
  *
- * 硬件访问（行驱动/列读取/上拉）通过 MatrixIO 注入，因此本类可在宿主机
- * 单元测试中配合模拟矩阵（SimMatrixIO）验证去抖与分类逻辑。
+ * Hardware access (row driving / column reading / pull-ups) is injected via
+ * MatrixIO, so this class can be validated on the host with a simulated matrix
+ * (SimMatrixIO) for debounce and classification logic.
  *
- * 去抖：连续 kDebounceThreshold 次扫描读到同一状态才算稳定，
- * 阈值对应约 4×扫描周期（主循环 10ms 时约 40ms）。
- * 键位表与引脚来自 KeyMatrix（本类只负责"怎么扫"，不关心"扫出什么键"）。
+ * Debounce: a state is only stable after kDebounceThreshold consecutive scans
+ * read the same value; the threshold corresponds to ~4× the scan period
+ * (~40ms at a 10ms main loop).
+ * Keymap and pins come from KeyMatrix (this class only handles "how to scan",
+ * not "which key is produced").
  */
 
 class KeyScanner
 {
-    friend class System;   // 仅 System 可创建（参照 UartDMAStdio 模式）
+    friend class System;   // Only System can create it (same pattern as UartDMAStdio)
 
 public:
-    void init();   // 初始化矩阵（转发给 MatrixIO）
-    void scan();   // 扫描 + 去抖（每轮主循环调用）
+    void init();   // Initialize the matrix (forwarded to MatrixIO)
+    void scan();   // Scan + debounce (called once per main-loop iteration)
 
-    // 本帧结果
+    // Current frame results
     const std::vector<KeyCodes>& pressed_basic() const    { return pressed_basic_; }
     const std::vector<KeyCodes>& pressed_extended() const { return pressed_extended_; }
     const std::vector<KeyCodes>& pressed_internal() const { return pressed_internal_; }
@@ -49,8 +53,8 @@ private:
 
     const KeyMatrix& matrix_;
     MatrixIO&        io_;
-    std::vector<uint8_t> debounce_;          // [rows*cols] 去抖计数
-    std::vector<KeyCodes> last_basic_;       // 上一帧（用于变化标志）
+    std::vector<uint8_t> debounce_;          // [rows*cols] debounce counters
+    std::vector<KeyCodes> last_basic_;       // Previous frame (for change flags)
     std::vector<KeyCodes> last_extended_;
     std::vector<KeyCodes> last_internal_;
 

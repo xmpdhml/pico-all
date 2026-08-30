@@ -4,8 +4,8 @@ project(pico_all_tests CXX)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# 宿主机单测：编译与硬件无关的源码 + 测试替身（stub tusb），
-# 不链接 pico-sdk，用宿主 g++ 直接运行。
+# Host unit tests: compile hardware-independent sources + a test stand-in
+# (stub tusb), no pico-sdk link; run directly with the host g++.
 add_executable(pico_all_tests
     ../src/key_matrix.cpp
     ../src/key_scan.cpp
@@ -22,5 +22,5 @@ target_include_directories(pico_all_tests PRIVATE
     stubs
 )
 
-# 宿主机单测禁用调试日志（DEBUG_LOG 展开为空），避免刷屏
+# Disable debug logging in host tests (DEBUG_LOG expands to nothing) to avoid noise
 target_compile_definitions(pico_all_tests PRIVATE DEBUG_LOG_ENABLE=0)
