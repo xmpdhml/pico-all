@@ -109,6 +109,7 @@ You can verify the whole chain without any switches:
 | Firmware is alive | LED on GP2 | ~50 Hz blink (half brightness) |
 | Matrix → HID path | Short **GP32 to GP38** | Types a lowercase `a` |
 | USB enumeration | Watch the UART log | `USB mounted by host: enumeration complete` |
+| Host → device path | Press Caps Lock on **another** keyboard | Log shows `LED state from host: 0x02 (num=0 caps=1 ...)` |
 
 UART (GP0=TX, GP1=RX, **1500000** 8N1) should print, in order:
 
@@ -250,13 +251,39 @@ match. Re-run it after touching the report descriptor or the `CONSUMER_*_BITMAP_
 
 ## Debug Logging
 
-Use `DEBUG_LOG("TAG", "fmt", ...)` (routed through the UART queue, safe across tasks):
+All debug output is controlled by compile-time switches in `include/debug_log.h`. With a switch
+off the macro expands to nothing — no code, no cost, arguments not evaluated.
+
+| Switch | Default | Controls |
+|---|---|---|
+| `DEBUG_LOG_ENABLE` | 1 | Master switch: `DEBUG_LOG()` plus the ad-hoc `printf`/`std::cout` debug lines in `system.cpp` |
+| `BOOT_LOG_ENABLE` | follows the master | The `[BOOT]` bring-up milestones via `BOOT_LOG()` |
+| `FATAL_LOG_ENABLE` | 1 | Fatal diagnostics only (`configASSERT` failure, "scheduler failed to start") |
+
+Three output macros:
 
 ```cpp
 #include "debug_log.h"
+
 DEBUG_LOG("SYS", "init done, rows=%d", n);   // → [SYS] init done, rows=3
+                                             // via the UART DMA queue: safe from any task,
+                                             // but needs the scheduler (uart_tx is the pump)
+BOOT_LOG("[BOOT] keyboard task running\r\n"); // direct blocking UART write: also works before
+                                              // the scheduler starts and when it fails to
+FATAL_LOG("...");                             // only used on fatal error paths
 ```
 
-- Master switch `DEBUG_LOG_ENABLE` (`debug_log.h`, default 1; set 0 for release);
-- Note: log only after `UartDMAStdio` is initialized (output is discarded before the stdio driver is enabled).
+Build a quiet release image without editing any source:
+
+```bash
+cmake -B build -DCMAKE_C_FLAGS="-DDEBUG_LOG_ENABLE=0" \
+                -DCMAKE_CXX_FLAGS="-DDEBUG_LOG_ENABLE=0"
+```
+
+- `BOOT_LOG()` follows the master switch automatically, so that single define silences both.
+- `FATAL_LOG_ENABLE` stays on by default on purpose: it can only ever print on a fatal error, and
+  without it a startup failure produces no output at all — which makes it very hard to diagnose.
+  Add `-DFATAL_LOG_ENABLE=0` for total silence.
+- Logs only appear after `UartDMAStdio` is initialized (output is discarded before the stdio driver
+  is enabled).
 

@@ -35,10 +35,15 @@ extern "C" void vApplicationStackOverflowHook(TaskHandle_t xTask, char* pcTaskNa
  * is exactly what tends to be broken when an assert fires during startup. */
 extern "C" void freertos_assert_failed(const char* file, int line)
 {
+#if FATAL_LOG_ENABLE
     char buf[160];
     snprintf(buf, sizeof(buf),
              "\r\n*** FreeRTOS configASSERT FAILED at %s:%d ***\r\n", file, line);
-    uart_boot_puts(buf);
+    FATAL_LOG(buf);
+#else
+    (void)file;
+    (void)line;
+#endif
     for (;;) {
         tight_loop_contents();
     }
@@ -84,8 +89,10 @@ void System::init()
     // not printf: printf output is pumped by the uart_tx FreeRTOS task, so if the
     // scheduler never starts nothing at all is printed and a startup failure is
     // indistinguishable from "the firmware never ran".
-    uart_boot_puts("\r\n[BOOT] firmware running; UART ready\r\n");
-    printf("Hello, world! customized\n");
+    BOOT_LOG("\r\n[BOOT] firmware running; UART ready\r\n");
+#if DEBUG_LOG_ENABLE
+    printf("Hello, world! customized\n");   /* custom-stdio smoke test */
+#endif
     DEBUG_LOG("SYS", "init begin");
 
     // NOTE: TinyUSB is initialized inside keyboard_task(), NOT here.
@@ -117,8 +124,10 @@ void System::init()
     // uart_tx task (no UART output at all) and no USB servicing.
     busy_wait_ms(1000);
 
-    uart_boot_puts("[BOOT] init done; about to start scheduler\r\n");
+    BOOT_LOG("[BOOT] init done; about to start scheduler\r\n");
+#if DEBUG_LOG_ENABLE
     std::cout << "Starting FreeRTOS SMP scheduler..." << std::endl;
+#endif
 }
 
 void System::run()
@@ -135,15 +144,14 @@ void System::run()
 
     // Start the scheduler: dual-core SMP, never returns (unless the heap is too small to create the idle tasks)
     DEBUG_LOG("SYS", "starting FreeRTOS SMP scheduler on %d cores", configNUMBER_OF_CORES);
-    uart_boot_puts("[BOOT] calling vTaskStartScheduler()\r\n");
+    BOOT_LOG("[BOOT] calling vTaskStartScheduler()\r\n");
     vTaskStartScheduler();
 
     // Returning from vTaskStartScheduler() means it failed to start (typically not
-    // enough FreeRTOS heap for the idle tasks). Report it over the direct UART
-    // path — std::cout cannot work here because its TX pump is an RTOS task.
-    uart_boot_puts("\r\n*** FATAL: vTaskStartScheduler() returned; "
-                   "scheduler never started (check configTOTAL_HEAP_SIZE) ***\r\n");
-    std::cout << "FATAL: vTaskStartScheduler() returned" << std::endl;
+    // enough FreeRTOS heap for the idle tasks). Report it through the direct UART
+    // path — std::cout cannot be used here because its TX pump is an RTOS task.
+    FATAL_LOG("\r\n*** FATAL: vTaskStartScheduler() returned; "
+              "scheduler never started (check configTOTAL_HEAP_SIZE) ***\r\n");
     while (true) {
         tight_loop_contents();
     }
@@ -155,13 +163,13 @@ void System::keyboard_task(void* pv)
 
     // Direct blocking write: proof the scheduler started and this task is running
     // on UART, independent of the uart_tx task.
-    uart_boot_puts("[BOOT] keyboard task running\r\n");
+    BOOT_LOG("[BOOT] keyboard task running\r\n");
 
     // Initialize USB here rather than in System::init(): tusb_init() connects the
     // device, and this task polls tud_task() from now on, so every enumeration
     // control transfer is serviced (see the note in System::init()).
     sys.hid.init();
-    uart_boot_puts("[BOOT] USB initialized\r\n");
+    BOOT_LOG("[BOOT] USB initialized\r\n");
 
     DEBUG_LOG("SCAN", "keyboard task running on core %d", get_core_num());
     TickType_t last_wake = xTaskGetTickCount();

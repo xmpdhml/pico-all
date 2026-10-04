@@ -105,8 +105,7 @@ USB 上应该出现**一个 HID 键盘**：
 |---|---|---|
 | 固件是否在跑 | GP2 接 LED | 约 50Hz 闪烧（半边亮） |
 | 矩阵 → HID 通路 | 短接 **GP32 与 GP38** | 打出一个小写 `a` |
-| USB 枚举是否成功 | 看 UART 日志 | 出现 `USB mounted by host: enumeration complete` |
-
+| USB 枚举是否成功 | 看 UART 日志 | 出现 `USB mounted by host: enumeration complete` || 主机 → 设备通路 | 在**另一个键盘**上按 Caps Lock | 日志出现 `LED state from host: 0x02 (num=0 caps=1 ...)` |
 UART（GP0=TX, GP1=RX, **1500000** 8N1）正常启动依次输出：
 
 ```
@@ -236,12 +235,34 @@ OK: all reports are byte-aligned and match the firmware
 
 ## 调试日志
 
-用 `DEBUG_LOG("TAG", "fmt", ...)` 输出（经 UART DMA 队列，跨任务安全）：
+所有调试输出都由 `include/debug_log.h` 里的**编译期开关**统一控制。关掉后宏展开为空——不产生任何代码、参数不求值、零开销。
+
+| 开关 | 默认 | 控制范围 |
+|---|---|---|
+| `DEBUG_LOG_ENABLE` | 1 | 总开关：`DEBUG_LOG()` 以及 `system.cpp` 里零散的 `printf`/`std::cout` 调试行 |
+| `BOOT_LOG_ENABLE` | 跟随总开关 | `[BOOT]` 启动里程碑（`BOOT_LOG()`） |
+| `FATAL_LOG_ENABLE` | 1 | 仅致命诊断（`configASSERT` 失败、"调度器启动失败"） |
+
+三个输出宏：
 
 ```cpp
 #include "debug_log.h"
-DEBUG_LOG("SYS", "init done, rows=%d", n);   // → [SYS] init done, rows=3
+
+DEBUG_LOG("SYS", "init done, rows=%d", n);    // → [SYS] init done, rows=3
+                                              // 走 UART DMA 队列：任意任务可安全调用，
+                                              // 但需要调度器已运行（由 uart_tx 任务泵出）
+BOOT_LOG("[BOOT] keyboard task running\r\n"); // 直接阻塞写 UART：调度器启动前、
+                                              // 以及启动失败时同样能看到
+FATAL_LOG("...");                             // 只用在致命错误路径
 ```
 
-- 总开关 `DEBUG_LOG_ENABLE`（`debug_log.h`，默认 1，发布可置 0）；
+不改代码即可编出「安静」的发布固件：
+
+```bash
+cmake -B build -DCMAKE_C_FLAGS="-DDEBUG_LOG_ENABLE=0" \
+                -DCMAKE_CXX_FLAGS="-DDEBUG_LOG_ENABLE=0"
+```
+
+- `BOOT_LOG()` 自动跟随总开关，所以上面这一个宏就能同时静音普通日志和启动里程碑。
+- `FATAL_LOG_ENABLE` **默认保持开启是刻意的**：它只在致命错误时才可能输出，平时零开销；而一旦关掉，启动失败就变成「完全没有任何输出」，极难排查（我们刚踩过这个坑）。要彻底静音再加 `-DFATAL_LOG_ENABLE=0`。
 - 注意：日志必须放在 `UartDMAStdio` 初始化之后才会输出（stdio 驱动启用前输出被丢弃）。

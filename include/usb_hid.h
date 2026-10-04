@@ -40,6 +40,14 @@ public:
     void set_nkro(bool enable);   // Force the mode (sends an empty report to clear state on switch)
     void toggle_nkro();           // Flip the mode
 
+    /* Host -> device LED state (Num/Caps/Scroll Lock...), delivered as an OUTPUT
+     * report. Entry point for tud_hid_set_report_cb(); static because the TinyUSB
+     * callback is a C weak symbol and has no instance to call through.
+     * Returns true only when the state actually changed (in which case it was
+     * logged) — repeated identical reports stay quiet. */
+    static bool on_led_report(uint8_t report_id, uint16_t bufsize,
+                              uint8_t const* buffer);
+
 private:
     UsbHid(const KeyScanner& scan);   // Dependency-injected scan results
     ~UsbHid() = default;
@@ -79,6 +87,7 @@ private:
     uint8_t last_sys_report_[CONSUMER_SYS_BITMAP_SIZE] = {};
     uint8_t last_app_report_[CONSUMER_APP_BITMAP_SIZE] = {};
     std::vector<KeyCodes> prev_internal_;  // Internal-key press-edge detection
+    static uint8_t last_leds_;             // Last LED bitmap received (change logging)
 
     const KeyScanner& scan_;              // Scan-result source (dependency injection)
 };

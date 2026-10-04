@@ -33,6 +33,10 @@ UsbHid::UsbHid(const KeyScanner& scan)
 {
 }
 
+/* Last LED bitmap received from the host; used purely to log changes (the host
+ * may repeat the same SET_REPORT, and we do not want to spam the UART). */
+uint8_t UsbHid::last_leds_ = 0;
+
 /* ==================================================================== */
 /* Public interface                                                     */
 /* ==================================================================== */
@@ -44,6 +48,9 @@ void UsbHid::init() {
     // Fill the serial number first: the host reads descriptors as soon as the
     // pull-up goes on.
     usb_descriptors_init();
+    // New USB session: forget the previous LED state so the first report after
+    // (re)connecting is logged even if it happens to be all-zero.
+    last_leds_ = 0;
     tusb_init();
     DEBUG_LOG("HID", "tusb init done (core %d)", get_core_num());
 }
@@ -273,6 +280,39 @@ void UsbHid::send_report_app(const std::vector<KeyCodes>& pressed) {
 }
 
 /* ==================================================================== */
+/* Host -> device LED state (OUTPUT report)                             */
+/* ==================================================================== */
+
+bool UsbHid::on_led_report(uint8_t report_id, uint16_t bufsize,
+                           uint8_t const* buffer) {
+    // The LED output lives in the 6KRO keyboard report (see the report descriptor),
+    // and TinyUSB strips a leading report ID byte from the control-transfer payload
+    // before calling us, so buffer[0] is the LED bitmap either way.
+    if (report_id != REPORT_ID_KEYBOARD || buffer == nullptr || bufsize < 1) {
+        return false;
+    }
+
+    const uint8_t leds = buffer[0];
+    if (leds == last_leds_) {
+        return false;  // unchanged: stay quiet
+    }
+    last_leds_ = leds;
+
+    // Bits per the report descriptor: 1=Num Lock, 2=Caps Lock, 3=Scroll Lock,
+    // 4=Compose, 5=Kana.
+    DEBUG_LOG("HID", "LED state from host: 0x%02X (num=%u caps=%u scroll=%u compose=%u kana=%u)",
+              (unsigned)leds,
+              (unsigned)((leds >> 0) & 1),
+              (unsigned)((leds >> 1) & 1),
+              (unsigned)((leds >> 2) & 1),
+              (unsigned)((leds >> 3) & 1),
+              (unsigned)((leds >> 4) & 1));
+
+    // TODO: drive the Num/Caps/Scroll LEDs from here (and clear them on unmount).
+    return true;
+}
+
+/* ==================================================================== */
 /* TinyUSB callbacks (weak-symbol overrides; extern "C" to match headers) */
 /* ==================================================================== */
 extern "C" {
@@ -300,8 +340,13 @@ uint16_t tud_hid_get_report_cb(uint8_t itf, uint8_t report_id,
 void tud_hid_set_report_cb(uint8_t itf, uint8_t report_id,
                            hid_report_type_t report_type,
                            uint8_t const *buffer, uint16_t bufsize) {
-    (void)itf; (void)report_id; (void)report_type; (void)buffer; (void)bufsize;
-    // TODO: drive Num/Caps/Scroll LEDs when an OUTPUT report is received
+    (void)itf;
+    if (report_type != HID_REPORT_TYPE_OUTPUT) {
+        return;
+    }
+    // OUTPUT report: the host is telling us the keyboard LED state
+    // (Num/Caps/Scroll Lock).
+    UsbHid::on_led_report(report_id, bufsize, buffer);
 }
 
 } // extern "C"

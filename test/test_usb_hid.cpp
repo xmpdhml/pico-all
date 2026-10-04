@@ -164,3 +164,32 @@ UT_CASE(send_consumer_report_spy) {
     CHECK_EQ(g_last_report_len, (uint16_t)CONSUMER_BITMAP_SIZE);
     CHECK(g_last_report[7] & (uint8_t)(1u << 1));
 }
+
+/* Host -> device LED state (Num/Caps/Scroll Lock), arriving as an OUTPUT report.
+ * on_led_report() reports whether the state changed, so the change detection is
+ * observable here even though DEBUG_LOG itself is compiled out in host tests. */
+UT_CASE(led_report_change_detection) {
+    UsbHid::last_leds_ = 0;
+    const uint8_t caps_on[1]  = { 0x02 };   // bit1 = Caps Lock
+    const uint8_t caps_on2[1] = { 0x02 };   // identical repeat
+    const uint8_t all_off[1]  = { 0x00 };
+
+    CHECK(UsbHid::on_led_report(REPORT_ID_KEYBOARD, 1, caps_on));    // first report -> changed
+    CHECK(!UsbHid::on_led_report(REPORT_ID_KEYBOARD, 1, caps_on2));  // repeat -> stays quiet
+    CHECK_EQ(UsbHid::last_leds_, 0x02);
+    CHECK(UsbHid::on_led_report(REPORT_ID_KEYBOARD, 1, all_off));    // released -> changed
+    CHECK_EQ(UsbHid::last_leds_, 0x00);
+}
+
+UT_CASE(led_report_filters) {
+    UsbHid::last_leds_ = 0;
+    const uint8_t leds[1] = { 0x01 };       // bit0 = Num Lock
+
+    CHECK(!UsbHid::on_led_report(REPORT_ID_NKRO, 1, leds));       // not the keyboard report
+    CHECK(!UsbHid::on_led_report(REPORT_ID_KEYBOARD, 0, leds));   // empty payload
+    CHECK(!UsbHid::on_led_report(REPORT_ID_KEYBOARD, 1, nullptr));
+    CHECK_EQ(UsbHid::last_leds_, 0x00);                           // nothing was accepted
+
+    CHECK(UsbHid::on_led_report(REPORT_ID_KEYBOARD, 1, leds));
+    CHECK_EQ(UsbHid::last_leds_, 0x01);
+}
