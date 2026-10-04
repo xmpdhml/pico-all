@@ -38,8 +38,14 @@ UsbHid::UsbHid(const KeyScanner& scan)
 /* ==================================================================== */
 
 void UsbHid::init() {
+    // Called from keyboard_task (core 0) after the scheduler started, so the USB
+    // pull-up is only enabled once tud_task() is about to be polled. tusb_init()
+    // also enables the USB IRQ on the calling core — hence the core-0 affinity.
+    // Fill the serial number first: the host reads descriptors as soon as the
+    // pull-up goes on.
+    usb_descriptors_init();
     tusb_init();
-    DEBUG_LOG("HID", "tusb init done");
+    DEBUG_LOG("HID", "tusb init done (core %d)", get_core_num());
 }
 
 void UsbHid::task() {
@@ -270,6 +276,19 @@ void UsbHid::send_report_app(const std::vector<KeyCodes>& pressed) {
 /* TinyUSB callbacks (weak-symbol overrides; extern "C" to match headers) */
 /* ==================================================================== */
 extern "C" {
+
+/* Fired by TinyUSB only after SET_CONFIGURATION succeeds, i.e. the host has read
+ * the device/config/HID report descriptors and configured us. Seeing this in the
+ * UART log means USB enumeration is fully working — if it never appears, the
+ * host never got that far (wiring, BOOTSEL still active, or the stack never
+ * being polled). */
+void tud_mount_cb(void) {
+    DEBUG_LOG("HID", "USB mounted by host: enumeration complete");
+}
+
+void tud_umount_cb(void) {
+    DEBUG_LOG("HID", "USB unmounted by host (unplugged / reset)");
+}
 
 uint16_t tud_hid_get_report_cb(uint8_t itf, uint8_t report_id,
                                hid_report_type_t report_type,

@@ -19,6 +19,11 @@ void tusb_init(void) {}
 void tud_task(void) {}
 bool tud_hid_ready(void) { return true; }
 
+/* usb_descriptors.c is not part of the host test build, so stub the serial-number
+ * initialization that usb_hid.cpp calls from init(). extern "C" to match the
+ * C-linkage declaration in usb_descriptors.h. */
+extern "C" void usb_descriptors_init(void) {}
+
 bool tud_hid_report(uint8_t report_id, void const* report, uint16_t len) {
     if (len > sizeof(g_last_report)) len = sizeof(g_last_report);
     g_last_report_id = report_id;

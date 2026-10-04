@@ -43,7 +43,7 @@ include_directories(include)
 # USB HID keyboard: TinyUSB device stack (tusb_config.h in include/, HID driver enabled)
 # pico_malloc: protect malloc/new with a mutex on multi-core (otherwise cross-core
 # std::vector/string allocations crash)
-target_link_libraries(${PROJECT_NAME} PRIVATE pico_stdlib hardware_pio hardware_uart hardware_dma hardware_irq pico_multicore tinyusb_device pico_malloc FreeRTOS-Kernel-Heap4)
+target_link_libraries(${PROJECT_NAME} PRIVATE pico_stdlib hardware_pio hardware_uart hardware_dma hardware_irq pico_multicore tinyusb_device pico_malloc pico_unique_id FreeRTOS-Kernel-Heap4)
 
 pico_enable_stdio_usb(${PROJECT_NAME} 0)
 pico_enable_stdio_uart(${PROJECT_NAME} 1)

@@ -81,7 +81,85 @@ make -C build -j8
 
 1. 断电，短接 `BS` 焊盘与 `GND`；
 2. 接 USB 上电，电脑出现 UF2 磁盘；
-3. 把 `build/pico_all.uf2` 拖入该磁盘（或用 `picotool load -f build/pico_all.uf2`）。
+3. 把 `build/pico_all.uf2` 拖入该磁盘（或用 `picotool load -f build/pico_all.uf2`）；
+4. **断开 `BS` 与 `GND` 的短接，再重新上电** —— 若一直短接着，下次上电仍会进入 UF2 引导模式（表现为一个名为 `RP2350` 的 U 盘，而不是键盘）。
+
+## 上电后应该看到什么（自检）
+
+USB 上应该出现**一个 HID 键盘**：
+
+| 项目 | 预期值 |
+|---|---|
+| 设备类型 | USB HID 键盘（Windows 设备管理器 → “键盘” → `HID Keyboard Device`） |
+| 硬件 ID | `USB\VID_CAFE&PID_0001` |
+| 产品 / 厂商字符串 | `RP2350B HID Keyboard` / `MyKeyboard` |
+| 序列号 | 芯片唯一 ID（`pico_get_unique_board_id_string()` 生成） |
+| HID 报告 | 一个接口 5 个报告：6KRO、NKRO 位图、媒体键、系统键、AL_* 启动键 |
+| **不会**出现 | COM 口（stdio USB 已关闭）、U 盘 |
+
+**不按任何键本来“没反应”**：当前 `kKeymap` 是 3×3 占位表，行列接在 GP32/34/36 与 GP38/40/42，没接开关就永远不会产生按键。
+
+不接开关也能验证整条链路：
+
+| 检查 | 方法 | 预期 |
+|---|---|---|
+| 固件是否在跑 | GP2 接 LED | 约 50Hz 闪烧（半边亮） |
+| 矩阵 → HID 通路 | 短接 **GP32 与 GP38** | 打出一个小写 `a` |
+| USB 枚举是否成功 | 看 UART 日志 | 出现 `USB mounted by host: enumeration complete` |
+
+UART（GP0=TX, GP1=RX, **1500000** 8N1）正常启动依次输出：
+
+```
+[BOOT] firmware running; UART ready
+Hello, world! customized
+[SYS] init begin
+[SYS] matrix scan init done (3x3)
+[SYS] LED init done (GP2)
+[BOOT] init done; about to start scheduler
+Starting FreeRTOS SMP scheduler...
+[SYS] creating tasks (keyboard prio4, system prio1)
+[SYS] starting FreeRTOS SMP scheduler on 2 cores
+[BOOT] calling vTaskStartScheduler()
+[BOOT] keyboard task running
+[HID] tusb init done (core 0)
+[BOOT] USB initialized
+[SCAN] keyboard task running on core 0
+[HID] USB mounted by host: enumeration complete   ← 只有这行代表枚举成功
+```
+
+> `[BOOT]` 开头的行走的是**不依赖 RTOS 的直接阻塞写**（`uart_boot_puts()`），
+> 所以在调度器启动失败时也能看到 —— 它们是判断“卡在哪一步”的关键。
+
+### UART 完全没有输出
+
+说明固件在 `vTaskStartScheduler()` 之前就卡住了（正常 printf 靠 `uart_tx` 任务泵出，调度器不启动就一个字都打不出来）：
+
+- 停在 `[BOOT] firmware running` 之后：卡在 `System::init()` 后半段。
+- 出现 `*** FATAL: vTaskStartScheduler() returned`：FreeRTOS 堆不足（`configTOTAL_HEAP_SIZE`）。
+- 出现 `*** FreeRTOS configASSERT FAILED at <文件>:<行> ***`：按提示定位。
+
+> ⚠️ **调度器启动前绝不能调用 `sleep_ms()` / `sleep_us()`**：开了
+> `configSUPPORT_PICO_TIME_INTEROP=1` 后它们会落到 `vTaskDelay()`，而调度器未启动时
+> 没有 current TCB，直接是非法操作、启动就此中止。延时请用 `busy_wait_ms()`。
+> 同理，启动前的 `printf` 也不能走 RTOS 队列（现已在 `uart_dma_write` 里自动退回直写）。
+
+### 枚举成功但报「代码 10 / 报表未对齐字节」
+
+HID 报表描述符没通过 Windows 校验（枚举本身已成功，所以能看到 `USB mounted by host`）。
+逐项核对：**每个报表的位宽必须是 8 的倍数，且与固件实发字节数一致**，位图报表记得补常量位。
+用脚本直接检查 ELF 里的真实描述符定位问题：
+
+```bash
+python3 test/check_hid_descriptor.py
+```
+
+### 插上完全没反应时
+
+1. **是否还停在 UF2 引导模式** —— `BS`–`GND` 是否还短接着？断开后重新上电；此时电脑里出现的是 U 盘而非键盘。
+2. **Windows 复用了旧的失败记录** —— 之前出过代码 43，设备管理器 → 勾选“显示隐藏的设备” → 卸载所有 `VID_CAFE&PID_0001` 条目（含灰色）→ 重新插拔。序列号现已改为芯片唯一 ID，正常情况下会建新的设备节点。
+3. **USB 数据线接反 / 虚焊** —— 绿=U+=D+、白=U-=D-；确认 VB 有 5V、与主机共地。
+4. **换口换线** —— 直连主机，不要走 hub。
+5. 若 UART 日志停在 `tusb init done` 之前，说明问题在固件启动阶段（看日志最后一行卡在哪）。
 
 ## 配置
 
@@ -128,6 +206,33 @@ cmake --build build
 ```
 
 覆盖：矩阵几何 / 扫描去抖与分类 / HID 键码映射与报告构建 / NKRO 切换。
+
+### HID 描述符校验（防「代码 10 / 报表未对齐字节」）
+
+Windows 会校验 HID 报表描述符：**任一报表的位宽不是 8 的倍数，就会直接拒绝设备**（枚举能过，但报代码 10）。位图型报表特别容易踩坑 —— 比如 3 bit 的系统键、67 bit 的 AL_* 都必须补上常量位凑成整字节，而且**描述符声明的宽度必须和固件实际发送的字节数一致**（这两处是各自独立的，不同步时只有上真机才会暴露）。
+
+脚本会直接从 ELF 里取出**真实描述符字节**逐项校验（不依赖硬件，也不需要重新编译）：
+
+```bash
+python3 test/check_hid_descriptor.py        # 默认检查 build/pico_all.elf，可传入其它 elf 路径
+```
+
+输出示例：
+
+```
+ ID  IN bits  IN bytes       OUT bits  OUT bytes
+  1       64         8   OK         8          1   OK
+  2      272        34   OK         0          0    -
+  ...
+  input  id4: descriptor    8 bit vs firmware    8 bit -> OK
+
+OK: all reports are byte-aligned and match the firmware
+```
+
+只要有报表没对齐、或声明宽度与实发宽度不符，就会列出问题并以非零退出码失败。
+
+> 改动「报表描述符」或 `CONSUMER_*_BITMAP_SIZE` 等宏之后请重跑一次；
+> 同时 `src/usb_descriptors.c` 里带了 `_Static_assert` 兜住位图放不下使用范围的情况。
 
 ## 调试日志
 

@@ -89,8 +89,16 @@
 #define configSUPPORT_PICO_TIME_INTEROP         1
 
 /* ---- Assert ---- */
-#include <assert.h>
-#define configASSERT( x )                       assert( x )
+/* A failing configASSERT must be visible: the normal printf path is pumped by a
+ * FreeRTOS task, so an assert during scheduler startup would otherwise die
+ * completely silently (no UART output whatsoever). Report over the direct
+ * blocking UART path, then halt. */
+#ifdef __cplusplus
+extern "C"
+#endif
+void freertos_assert_failed(const char* file, int line);
+#define configASSERT( x ) \
+    do { if( !( x ) ) { freertos_assert_failed( __FILE__, __LINE__ ); } } while( 0 )
 
 /* ---- Which APIs to include (trimmed as needed) ---- */
 #define INCLUDE_vTaskPrioritySet                1

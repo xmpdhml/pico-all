@@ -29,6 +29,20 @@ static uart_inst_t* uart_instance = nullptr;
  * scheduler starts). On a full queue it only yields the CPU; init-time prints
  * are far below the queue capacity, so that path is never hit there. */
 static void uart_dma_write(const char *buf, int len) {
+    // Before the scheduler starts there is no TX task to pump the queue, and the
+    // queue/mutex/notify paths must not be used either (there is no current TCB
+    // yet). Emit directly with blocking writes so init-time printf/DEBUG_LOG still
+    // works — otherwise every pre-scheduler log line is silently dropped, which
+    // makes an early startup failure impossible to diagnose.
+    if (xTaskGetSchedulerState() == taskSCHEDULER_NOT_STARTED) {
+        if (uart_instance != nullptr) {
+            for (int i = 0; i < len; i++) {
+                uart_putc_raw(uart_instance, buf[i]);
+            }
+        }
+        return;
+    }
+
     std::string str(buf, len);
     for (;;) {
         bool pushed = false;
@@ -70,6 +84,18 @@ static stdio_driver_t uart_dma_stdio = {
     .in_chars = uart_poll_read,
     .crlf_enabled = true
 };
+
+/* Direct blocking write: no queue, no task, no RTOS. Safe before the scheduler
+ * starts and from assert/hard-fault paths. Blocks until the UART FIFO accepts
+ * each byte, which is what we want for boot diagnostics. */
+extern "C" void uart_boot_puts(const char* s) {
+    if (uart_instance == nullptr || s == nullptr) {
+        return;
+    }
+    while (*s != '\0') {
+        uart_putc_raw(uart_instance, *s++);
+    }
+}
 
 /* UART TX queue pump: FreeRTOS task, blocks for data then sends byte-by-byte. */
 static void uart_tx_task(void* pv) {

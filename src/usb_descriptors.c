@@ -9,6 +9,7 @@
 
 #include "tusb.h"
 #include "usb_descriptors.h"
+#include "pico/unique_id.h"
 
 /* ------------------------------------------------------------------ */
 /* Device Descriptor                                                   */
@@ -133,6 +134,16 @@ uint8_t const desc_hid_report[] = {
       HID_REPORT_COUNT( (CONSUMER_SYS_USAGE_MAX - CONSUMER_SYS_USAGE_MIN + 1) ),
       HID_REPORT_SIZE ( 1 ),
       HID_INPUT       ( HID_DATA | HID_VARIABLE | HID_ABSOLUTE ),
+      /* Pad the bitmap up to a whole byte (3 data bits + 5 constant bits = 8 bits).
+       * Windows validates the report descriptor and rejects the entire device with
+       * Code 10 / "the report is not byte-aligned" if any report is not a multiple
+       * of 8 bits. The padding count is derived from CONSUMER_SYS_BITMAP_SIZE — the
+       * very size the firmware transmits — so descriptor and firmware cannot drift
+       * apart. Constant bits carry no data and are ignored by the host. */
+      HID_REPORT_COUNT( CONSUMER_SYS_BITMAP_SIZE * 8
+                        - (CONSUMER_SYS_USAGE_MAX - CONSUMER_SYS_USAGE_MIN + 1) ),
+      HID_REPORT_SIZE ( 1 ),
+      HID_INPUT       ( HID_CONSTANT ),
     HID_COLLECTION_END,
 
     /* ============ Consumer / application launch AL_* (bitmap) ============ */
@@ -148,18 +159,49 @@ uint8_t const desc_hid_report[] = {
       HID_REPORT_COUNT( (CONSUMER_APP_USAGE_MAX - CONSUMER_APP_USAGE_MIN + 1) ),
       HID_REPORT_SIZE ( 1 ),
       HID_INPUT       ( HID_DATA | HID_VARIABLE | HID_ABSOLUTE ),
+      /* Pad to a whole byte: 67 data bits + 5 constant bits = 72 bits = 9 bytes
+       * (CONSUMER_APP_BITMAP_SIZE). See the system-keys report above for why this
+       * is required — Windows rejects a non-byte-aligned report outright. */
+      HID_REPORT_COUNT( CONSUMER_APP_BITMAP_SIZE * 8
+                        - (CONSUMER_APP_USAGE_MAX - CONSUMER_APP_USAGE_MIN + 1) ),
+      HID_REPORT_SIZE ( 1 ),
+      HID_INPUT       ( HID_CONSTANT ),
     HID_COLLECTION_END,
 };
+
+/* Windows requires every HID report to be a whole number of bytes; a report width
+ * that does not fit its bitmap would make the padding above negative (and the
+ * descriptor invalid). Guard the two bit-field reports at compile time. */
+_Static_assert( ( CONSUMER_SYS_USAGE_MAX - CONSUMER_SYS_USAGE_MIN + 1 )
+                    <= CONSUMER_SYS_BITMAP_SIZE * 8,
+                "consumer system-keys report does not fit its bitmap" );
+_Static_assert( ( CONSUMER_APP_USAGE_MAX - CONSUMER_APP_USAGE_MIN + 1 )
+                    <= CONSUMER_APP_BITMAP_SIZE * 8,
+                "consumer application-launch report does not fit its bitmap" );
 
 /* ------------------------------------------------------------------ */
 /* String Descriptors                                                  */
 /* ------------------------------------------------------------------ */
+/* Serial number: taken from the chip's unique board ID instead of a fixed
+ * string. Windows keys its cached device state on VID/PID/serial, so a unique
+ * serial makes every board a distinct device. This matters during bring-up:
+ * if the device previously enumerated in a broken state (e.g. the USB
+ * enumeration failure that showed up as Code 43), a fixed serial makes Windows
+ * keep reusing that cached device node, so the board can still look broken even
+ * after the firmware is fixed. Filled by usb_descriptors_init(). */
+static char serial_str[2 * PICO_UNIQUE_BOARD_ID_SIZE_BYTES + 1] = "000000";
+
 char const *string_desc_arr[] = {
     (const char[]){0x09, 0x04}, // 0: Language ID = English
     "MyKeyboard",               // 1: Manufacturer
-    "RP2350B HID Keyboard",    // 2: Product
-    "000000",                   // 3: Serials
+    "RP2350B HID Keyboard",     // 2: Product
+    serial_str,                 // 3: Serial (chip unique board ID)
 };
+
+/* Must be called before tusb_init(), i.e. before the host can read descriptors. */
+void usb_descriptors_init(void) {
+    pico_get_unique_board_id_string(serial_str, sizeof(serial_str));
+}
 
 /* ------------------------------------------------------------------ */
 /* Configuration Descriptor (assembled by TinyUSB's TUD_CONFIG_DESCRIPTOR macro) */

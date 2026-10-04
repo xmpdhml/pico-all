@@ -30,6 +30,20 @@ extern "C" void vApplicationStackOverflowHook(TaskHandle_t xTask, char* pcTaskNa
     }
 }
 
+/* FreeRTOS configASSERT handler (see freertos/FreeRTOSConfig.h). Uses the direct
+ * blocking UART path because the normal printf path needs the scheduler, which
+ * is exactly what tends to be broken when an assert fires during startup. */
+extern "C" void freertos_assert_failed(const char* file, int line)
+{
+    char buf[160];
+    snprintf(buf, sizeof(buf),
+             "\r\n*** FreeRTOS configASSERT FAILED at %s:%d ***\r\n", file, line);
+    uart_boot_puts(buf);
+    for (;;) {
+        tight_loop_contents();
+    }
+}
+
 #ifdef PICO_DEFAULT_UART_BAUD_RATE
 #   define BAUD_RATE PICO_DEFAULT_UART_BAUD_RATE
 #else
@@ -65,12 +79,26 @@ void System::init()
     // after which DEBUG_LOG/printf actually reach uart_dma_stdio (before that
     // no driver is enabled and output is silently discarded)
     io.init(cfg::kUartTxPin, cfg::kUartRxPin, BAUD_RATE);
+
+    // Boot milestones go out through the direct blocking path (uart_boot_puts),
+    // not printf: printf output is pumped by the uart_tx FreeRTOS task, so if the
+    // scheduler never starts nothing at all is printed and a startup failure is
+    // indistinguishable from "the firmware never ran".
+    uart_boot_puts("\r\n[BOOT] firmware running; UART ready\r\n");
     printf("Hello, world! customized\n");
     DEBUG_LOG("SYS", "init begin");
 
-    // TinyUSB HID keyboard (enumerates as a USB keyboard at power-on)
-    hid.init();
-    DEBUG_LOG("SYS", "USB HID init done");
+    // NOTE: TinyUSB is initialized inside keyboard_task(), NOT here.
+    // tusb_init() enables the USB pull-up immediately, so the host starts
+    // enumerating right away, and tud_task() is what answers GET_DESCRIPTOR.
+    // With CFG_TUSB_OS = OPT_OS_NONE TinyUSB is purely polled, so nothing would
+    // service it between here and the first tud_task() call in keyboard_task
+    // (the sleep below, task creation, scheduler start). During that window the
+    // USB IRQ keeps queueing events into TinyUSB's fixed-size event queue until
+    // it overflows, after which enumeration never completes — Windows then
+    // reports "Code 43 / A request for the USB device descriptor failed".
+    // Initializing USB from the task guarantees the stack is polled from the
+    // moment the device connects.
 
     // Matrix GPIO (rows out / columns in + debounce)
     scan.init();
@@ -81,8 +109,15 @@ void System::init()
     gpio_set_dir(cfg::kLedPin, GPIO_OUT);
     DEBUG_LOG("SYS", "LED init done (GP%d)", cfg::kLedPin);
 
-    sleep_ms(1000);
+    // NOTE: busy_wait_ms(), NOT sleep_ms(). With configSUPPORT_PICO_TIME_INTEROP=1
+    // the SDK routes sleep_*() through the RTOS port, where
+    // xPortSyncInternalYieldUntilBefore() calls vTaskDelay(). Calling that before
+    // vTaskStartScheduler() is invalid (no current TCB), so a plain sleep_ms()
+    // here would abort startup: the scheduler never started, which meant no
+    // uart_tx task (no UART output at all) and no USB servicing.
+    busy_wait_ms(1000);
 
+    uart_boot_puts("[BOOT] init done; about to start scheduler\r\n");
     std::cout << "Starting FreeRTOS SMP scheduler..." << std::endl;
 }
 
@@ -90,15 +125,24 @@ void System::run()
 {
     // Create tasks (created before the scheduler starts; bodies don't run until vTaskStartScheduler)
     DEBUG_LOG("SYS", "creating tasks (keyboard prio4, system prio1)");
-    xTaskCreate(&System::keyboard_task, "keyboard", 1024, nullptr, 4, nullptr);
+    // The keyboard/USB task is pinned to core 0. tusb_init() enables the USB IRQ
+    // on the core that calls it, and with CFG_TUSB_OS = OPT_OS_NONE TinyUSB has
+    // no cross-core locking: keeping tusb_init()/tud_task() and the USB ISR on
+    // the same core avoids racy access to the event queue during enumeration.
+    xTaskCreateAffinitySet(&System::keyboard_task, "keyboard", 1024, nullptr, 4,
+                           (UBaseType_t)(1u << 0), nullptr);
     xTaskCreate(&System::system_task,   "system",   1024, nullptr, 1, nullptr);
 
     // Start the scheduler: dual-core SMP, never returns (unless the heap is too small to create the idle tasks)
     DEBUG_LOG("SYS", "starting FreeRTOS SMP scheduler on %d cores", configNUMBER_OF_CORES);
+    uart_boot_puts("[BOOT] calling vTaskStartScheduler()\r\n");
     vTaskStartScheduler();
 
-    // Scheduler failed to start: report and halt
-    // Scheduler failed to start: report and halt
+    // Returning from vTaskStartScheduler() means it failed to start (typically not
+    // enough FreeRTOS heap for the idle tasks). Report it over the direct UART
+    // path — std::cout cannot work here because its TX pump is an RTOS task.
+    uart_boot_puts("\r\n*** FATAL: vTaskStartScheduler() returned; "
+                   "scheduler never started (check configTOTAL_HEAP_SIZE) ***\r\n");
     std::cout << "FATAL: vTaskStartScheduler() returned" << std::endl;
     while (true) {
         tight_loop_contents();
@@ -108,6 +152,17 @@ void System::run()
 void System::keyboard_task(void* pv)
 {
     (void)pv;
+
+    // Direct blocking write: proof the scheduler started and this task is running
+    // on UART, independent of the uart_tx task.
+    uart_boot_puts("[BOOT] keyboard task running\r\n");
+
+    // Initialize USB here rather than in System::init(): tusb_init() connects the
+    // device, and this task polls tud_task() from now on, so every enumeration
+    // control transfer is serviced (see the note in System::init()).
+    sys.hid.init();
+    uart_boot_puts("[BOOT] USB initialized\r\n");
+
     DEBUG_LOG("SCAN", "keyboard task running on core %d", get_core_num());
     TickType_t last_wake = xTaskGetTickCount();
     while (true) {

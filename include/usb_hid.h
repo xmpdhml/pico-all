@@ -29,7 +29,11 @@ class UsbHid
     friend class System;
 
 public:
-    void init();            // tusb_init(): enumerate as HID keyboard at power-on; call once after stdio
+    void init();            // tusb_init(): connects USB and enumerates as a HID keyboard.
+                            // Must be called from the USB task (keyboard_task, pinned to
+                            // core 0) right before polling task(): the device must not
+                            // connect before tud_task() is being serviced, or the host's
+                            // GET_DESCRIPTOR goes unanswered (Windows Code 43).
     void task();            // Called each main-loop iteration: tud_task + encode & report per current mode
 
     bool nkro_enabled() const;    // Whether currently in NKRO mode

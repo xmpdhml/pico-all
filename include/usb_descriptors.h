@@ -49,4 +49,13 @@ extern const tusb_desc_device_t desc_device;
 extern const uint8_t desc_hid_report[];
 extern const char *string_desc_arr[];
 
+/* Fill the serial-number string from the chip's unique board ID.
+ * Must be called before tusb_init() so the host reads the real serial.
+ * Declared with C linkage because it is defined in usb_descriptors.c (C) but
+ * called from usb_hid.cpp (C++). */
+#ifdef __cplusplus
+extern "C"
+#endif
+void usb_descriptors_init(void);
+
 #endif /* USB_DESCRIPTORS_H */
